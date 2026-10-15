@@ -275,7 +275,7 @@ static const struct { const s32* rows; s32 count; } k_pages[PAGE_COUNT] = {
 };
 
 static const char* const k_filter_names[] = { "N64", "Smooth", "Sharp" };
-static const char* const k_aa_names[] = { "Off", "2x", "4x" };
+static const char* const k_aa_names[] = { "Off", "On" };   /* 2x supersampling (4x cost too much fill on the console) */
 
 /* optionsInitMain: menuCreateItems(80, ...); the panel starts further left
    so the value column and the stick readout fit on the 320-wide screen */
@@ -290,7 +290,8 @@ static s32 sPanelRowKind[MAX_ROWS];
 static s32 sPanelCount;
 static s16 sRowText[MAX_ROWS][ROW_CAP];
 static s16 sLegend[ROW_CAP];
-static s16 sAANote[ROW_CAP];   /* the hint under the rows when anti-aliasing can't apply */
+static s16 sAANote[ROW_CAP];   /* the hint under the rows when supersampling can't apply */
+static s16 sFilterNote[3][ROW_CAP];   /* what each texture filter does, under the rows on that row */
 static s16* sReturnText;
 static s32 sStickHeld;
 static u8 sDirty;
@@ -314,7 +315,7 @@ static const char* row_label(s32 kind) {
     case ROW_FILTER:
         return "Texture filter";
     case ROW_AA:
-        return "Anti-aliasing *";
+        return "Supersampling *";
     case ROW_RUMBLE:
         return "Rumble";
     case ROW_FPS:
@@ -357,7 +358,7 @@ static void panel_set_row(s32 idx) {
     case ROW_AA:
         /* supersampling needs the 640x480 32-bit frame (xgfx_set_aa): at
            720p/1080i it says so here and in the hint under the rows */
-        snprintf(v, sizeof v, "%s", g_wx_settings.aa && aa_blocked() ? "480 only" : k_aa_names[g_wx_settings.aa]);
+        snprintf(v, sizeof v, "%s", g_wx_settings.aa && aa_blocked() ? "480 only" : k_aa_names[g_wx_settings.aa ? 1 : 0]);
         break;
     case ROW_RUMBLE:
         snprintf(v, sizeof v, "%s", g_wx_settings.rumble ? "On" : "Off");
@@ -437,7 +438,10 @@ static void panel_open_page(s32 page, s32 cursor) {
 static void panel_init(void) {
     settings_boot_values();
     glyphs(sLegend, 0, ROW_CAP, MENU_FONT, "* After a restart");
-    glyphs(sAANote, 0, ROW_CAP, MENU_FONT, "Anti-aliasing: 480 only");
+    glyphs(sAANote, 0, ROW_CAP, MENU_FONT, "Supersampling: 480 only");
+    glyphs(sFilterNote[0], 0, ROW_CAP, MENU_FONT, "The game's own look");
+    glyphs(sFilterNote[1], 0, ROW_CAP, MENU_FONT, "Softer, less shimmer");
+    glyphs(sFilterNote[2], 0, ROW_CAP, MENU_FONT, "Crisp square pixels");
     panel_open_page(PAGE_TOP, 0);
     sDirty = 0;
 }
@@ -455,7 +459,7 @@ static void panel_change(s32 idx, s32 dir) {
         xgfx_set_tex_filter(g_wx_settings.tex_filter);
         break;
     case ROW_AA:
-        g_wx_settings.aa = (g_wx_settings.aa + dir + 3) % 3;
+        g_wx_settings.aa = !g_wx_settings.aa;
         break;
     case ROW_RUMBLE:
         g_wx_settings.rumble = !g_wx_settings.rumble;
@@ -500,7 +504,7 @@ static void panel_save(void) {
     if (!sDirty) return;
     xhw_logf("[SETTINGS] output %s, anti-aliasing %s, texture filter %s, rumble %d, fps %d, screenshots %d, "
              "stick dead zone %d%%",
-             k_out_names[g_wx_settings.output], k_aa_names[g_wx_settings.aa], k_filter_names[g_wx_settings.tex_filter],
+             k_out_names[g_wx_settings.output], k_aa_names[g_wx_settings.aa ? 1 : 0], k_filter_names[g_wx_settings.tex_filter],
              g_wx_settings.rumble, g_wx_settings.fps, g_wx_settings.screenshots, g_wx_settings.stick_deadzone);
     wx_settings_save();
     sDirty = 0;
@@ -596,11 +600,18 @@ static s32 panel_update(void) {
 static void panel_draw_legend(void) {
     uvFontSet(MENU_FONT);
     uvFontScale(1.0f, 1.0f);
-    {   /* on the Anti-aliasing row while the resolution rules it out: why */
+    {   /* hints for the row under the cursor: why supersampling is off at
+           720p/1080i, what the texture filter picked does */
         s32 cur = menuUtilGetCurItem();
         if (cur >= 0 && cur < sPanelCount && sPanelRowKind[cur] == ROW_AA && g_wx_settings.aa && aa_blocked()) {
             uvFontColor(0xFF, 0xFF, 0x00, 0xFF);
             uvFontPrintStr16(sPanelTextX, sPanelY - 2 * (uvFontHeight() + 1), sAANote, 100, 0xFFE);
+            return;
+        }
+        if (cur >= 0 && cur < sPanelCount && sPanelRowKind[cur] == ROW_FILTER) {
+            uvFontColor(0xFF, 0xFF, 0xFF, 0xFF);
+            uvFontPrintStr16(sPanelTextX, sPanelY - 2 * (uvFontHeight() + 1), sFilterNote[g_wx_settings.tex_filter], 100,
+                             0xFFE);
             return;
         }
     }

@@ -57,7 +57,7 @@ static void defaults(WxSettings* s) {
 static const char* const k_out[] = { "auto", "480i", "480p", "720p", "1080i" };
 static const char* const k_ws[] = { "off", "on", "auto" };
 static const char* const k_filter[] = { "n64", "smooth", "sharp" };
-static const char* const k_aa[] = { "off", "2x", "4x" };
+static const char* const k_aa[] = { "off", "on", "2x", "4x" };   /* on = 2x; 2x/4x from older files read as on */
 
 static char* trim(char* s) {
     char* e;
@@ -94,7 +94,7 @@ static void parse(WxSettings* s, char* text) {
             else if (!strcmp(k, "fps")) s->fps = atoi(v) != 0;
             else if (!strcmp(k, "screenshots")) s->screenshots = atoi(v) != 0;
             else if (!strcmp(k, "texture_filter")) s->tex_filter = pick(v, k_filter, 3, 0);
-            else if (!strcmp(k, "antialiasing")) s->aa = pick(v, k_aa, 3, 0);
+            else if (!strcmp(k, "antialiasing")) s->aa = pick(v, k_aa, 4, 0) != 0;
             else if (!strcmp(k, "rumble")) s->rumble = atoi(v) != 0;
             else if (!strcmp(k, "stick_deadzone")) {
                 int d = atoi(v);
@@ -116,7 +116,7 @@ int wx_settings_save(void) {
                      "[input]\r\nstick_deadzone = %d\r\nrumble = %d\r\n"
                      "; end of settings\r\n",
                      k_out[s->output], s->progressive, k_ws[s->widescreen], s->video_confirmed, s->fps,
-                     k_filter[s->tex_filter], k_aa[s->aa], s->screenshots, s->stick_deadzone, s->rumble);
+                     k_filter[s->tex_filter], k_aa[s->aa ? 1 : 0], s->screenshots, s->stick_deadzone, s->rumble);
     snprintf(p, sizeof p, "%ssettings.ini", xhw_save_dir());
     if (!xhw_write_file_atomic(p, buf, (uint32_t)n)) {
         xhw_logf("[SETTINGS] could not write %s", p);

@@ -48,6 +48,7 @@ void ocx_pb_layout(unsigned* out);  /* tools/xbox/patch_pbkit.py */
 #define XGFX_SHADOW_MARK 1   /* shadow volume mark pass: 1 colour on, blended (0, 1); 0 colour writes off (debug.txt shadow_mark) */
 #endif
 static int s_mark_mode = XGFX_SHADOW_MARK;
+static int s_shadow_dbg;   /* debug.txt shadow_debug: 1 draws the marks instead of the shadow */
 
 #ifndef XGFX_POLY_SLOPE
 #define XGFX_POLY_SLOPE 1.0f   /* polygon offset slope factor for biased (decal, tie-break) draws; 0: bias only */
@@ -1152,7 +1153,22 @@ static void emit_fixed(const XgfxState* st) {
      * pass the depth test, pass 2 draws where nothing was marked and clears
      * the mark as it goes, so the next volume starts from zero */
     SETF(F_STENCIL_EN, NV097_SET_STENCIL_TEST_ENABLE, st->stencil != XGFX_STENCIL_OFF);
-    if (st->stencil == XGFX_STENCIL_MARK) {
+    if (st->stencil != XGFX_STENCIL_OFF) {
+        /* the write and compare masks with every stencil draw: sent once at
+         * init they may not survive on the console (the shadow volumes
+         * drew whole there, never in xemu; console runs 1-5) */
+        put1(NV097_SET_STENCIL_MASK, 0xFF);
+        put1(NV097_SET_STENCIL_FUNC_MASK, 0xFF);
+    }
+    if (st->stencil == XGFX_STENCIL_TEST && s_shadow_dbg == 1) {
+        /* debug.txt shadow_debug = 1: pass 2 draws where pass 1 marked
+         * (the marks themselves; nothing drawn = marking fails) */
+        SETF(F_STENCIL_FUNC, NV097_SET_STENCIL_FUNC, 0x202);   /* EQUAL */
+        SETF(F_STENCIL_REF, NV097_SET_STENCIL_FUNC_REF, 1);
+        SETF(F_SOP_FAIL, NV097_SET_STENCIL_OP_FAIL, NV097_SET_STENCIL_OP_V_KEEP);
+        SETF(F_SOP_ZFAIL, NV097_SET_STENCIL_OP_ZFAIL, NV097_SET_STENCIL_OP_V_ZERO);
+        SETF(F_SOP_ZPASS, NV097_SET_STENCIL_OP_ZPASS, NV097_SET_STENCIL_OP_V_ZERO);
+    } else if (st->stencil == XGFX_STENCIL_MARK) {
         SETF(F_STENCIL_FUNC, NV097_SET_STENCIL_FUNC, 0x207);   /* ALWAYS */
         SETF(F_STENCIL_REF, NV097_SET_STENCIL_FUNC_REF, 1);
         SETF(F_SOP_FAIL, NV097_SET_STENCIL_OP_FAIL, NV097_SET_STENCIL_OP_V_KEEP);
@@ -1458,6 +1474,7 @@ int xgfx_init(void) {
     if (done) return 1;
     done = 1;
     s_mark_mode = xhw_debug_int("shadow_mark", XGFX_SHADOW_MARK);
+    s_shadow_dbg = xhw_debug_int("shadow_debug", 0);
     for (;;) {
         vm = xhw_video();
         if (vm->bpp == 16) {

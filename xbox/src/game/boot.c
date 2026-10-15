@@ -55,7 +55,7 @@ void wx_boot(const uint8_t* rom, uint32_t size) {
 #ifdef WX_AA_FORCE   /* tests: -DWX_AA_FORCE=1|2|4 over settings.ini */
     xgfx_set_aa(WX_AA_FORCE);
 #else
-    xgfx_set_aa(g_wx_settings.aa == 2 ? 4 : g_wx_settings.aa == 1 ? 2 : 1);
+    xgfx_set_aa(g_wx_settings.aa ? 2 : 1);
 #endif
     xgfx_init();
     xgfx_set_tex_filter(g_wx_settings.tex_filter);

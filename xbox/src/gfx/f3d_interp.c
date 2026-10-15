@@ -48,6 +48,9 @@
 #ifndef XGFX_SCISSOR
 #define XGFX_SCISSOR 1         /* small scissors and viewports (photo album thumbnails) honoured */
 #endif
+#ifndef XGFX_Z_REL_STEP
+#define XGFX_Z_REL_STEP (1.0f / 32768.0f)   /* per draw-order step; 2^-16 (wings64-dc's) still let the target flicker a little on the console (run 5) */
+#endif
 #ifndef XGFX_Z_REL
 #define XGFX_Z_REL 1           /* the tie-break and decal bias as a fraction of distance; 0: polygon offset units */
 #endif
@@ -598,7 +601,7 @@ static void pixel_state(int depth_override_always) {
              * to_out; a polygon offset of that many Z24 steps is nothing at
              * a distance and the landing target's bullseye striped on the
              * console (runs 1-3; xemu's float depth hid it) */
-            s_zrel = (float)s_st.depth_bias * (1.0f / 65536.0f);
+            s_zrel = (float)s_st.depth_bias * XGFX_Z_REL_STEP;
             s_st.depth_bias = 0;
         }
     }

@@ -39,9 +39,14 @@ def dxt1_block(px):
     opaque = [p for p in px if p[3] >= 128]
     if not opaque:
         return struct.pack("<HHI", 0, 0xFFFF, 0xFFFFFFFF)   # c0 <= c1: index 3 = transparent
-    # endpoints: extremes along the luminance axis (simple, good enough at 128 px)
+    # endpoints: the two texels farthest apart (weighted RGB). Luminance extremes
+    # alone pick the wrong pair when a block mixes hues of similar brightness
+    # (yellow against white, green against blue) and the block turns grey.
     lum = lambda p: p[0] * 299 + p[1] * 587 + p[2] * 114
-    lo, hi = min(opaque, key=lum), max(opaque, key=lum)
+    dist = lambda p, q: 3 * (p[0] - q[0]) ** 2 + 4 * (p[1] - q[1]) ** 2 + 2 * (p[2] - q[2]) ** 2
+    uniq = sorted(set(p[:3] for p in opaque))
+    lo, hi = max(((p, q) for i, p in enumerate(uniq) for q in uniq[i:]), key=lambda pq: dist(*pq))
+    lo, hi = sorted((lo, hi), key=lum)
     enc = lambda p: ((p[0] >> 3) << 11) | ((p[1] >> 2) << 5) | (p[2] >> 3)
     dec = lambda c: (((c >> 11) & 31) * 255 // 31, ((c >> 5) & 63) * 255 // 63, (c & 31) * 255 // 31)
     c_hi, c_lo = enc(hi), enc(lo)

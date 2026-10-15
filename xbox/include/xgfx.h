@@ -73,6 +73,7 @@ typedef struct {
     int32_t fb_w, fb_h;          /* framebuffer */
     int32_t bpp;                 /* 32, or 16 at 720p/1080i */
     float zmax;                  /* depth-buffer units at the far plane (2^24 - 1 for Z24S8) */
+    int32_t xscale;              /* framebuffer pixels per screen pixel across: 2 with 2x supersampling, else 1 */
 } XgfxOutput;
 
 /* ---- back end (hw) ---- */
@@ -88,6 +89,13 @@ void xgfx_clear(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t argb, i
 /* Ends the frame and queues the flip (vblank-synchronised by pbkit). */
 void xgfx_present(void);
 void xgfx_set_fps_overlay(int on);
+/* The Settings panel's texture filter: 0 N64 (the game's per-texture
+ * choice), 1 smooth (bilinear through a 3x3 Gaussian), 2 sharp (point).
+ * At once. */
+void xgfx_set_tex_filter(int mode);
+/* Anti-aliasing by supersampling: 1 off, 2 (2x wide), 4 (2x2). Before
+ * xgfx_init; only at 640x480 32-bit (else off). */
+void xgfx_set_aa(int samples);
 
 /* Textures: w and h powers of two (1..1024), rows of A8R8G8B8 texels
  * (0xAARRGGBB in a native uint32). Returns 0 when the pool is full (after

@@ -10,6 +10,7 @@
  * with pw64_fatal, as stubs.c does for libultra. */
 #include <ultra64.h>
 #include <wings64_fbfreeze.h>
+#include <wings64_settings.h>
 
 #include "../wx_game.h"
 #include "../../gfx/f3d_interp.h"
@@ -24,6 +25,14 @@ void wings64_fb_freeze(int on) {
 
 void wings64_fb_persist(int on) {
     f3d_fb_persist(on);
+}
+
+/* ---- patches/037: rumble on a crash ---- */
+#ifndef WX_RUMBLE
+#define WX_RUMBLE 1
+#endif
+void wings64_rumble_crash(void) {
+    if (WX_RUMBLE) wx_pad_rumble(52000, 650);   /* both motors, ~2/3 s: the jingle's opening hit */
 }
 
 /* ---- patches/022: the audio command list (M6: the RSP audio HLE, PLAN.md D6) ---- */

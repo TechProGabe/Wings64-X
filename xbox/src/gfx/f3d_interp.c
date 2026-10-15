@@ -289,17 +289,18 @@ static int s_title;   /* the title screen this frame (title fit) */
 static void map_setup(void) {
     float aspect;
     xgfx_output(&s_out);
-    aspect = (float)s_out.fb_w / (float)s_out.fb_h;
+    if (s_out.xscale < 1) s_out.xscale = 1;
+    aspect = (float)s_out.fb_w / (float)s_out.xscale / (float)s_out.fb_h;   /* the screen's, not the pixels' */
     s_ch = (float)s_out.fb_h;
-    s_cw = aspect > 1.4f ? s_ch * 4.0f / 3.0f : (float)s_out.fb_w;   /* DIVERGES: none (4:3 box) until M7 */
+    s_cw = aspect > 1.4f ? s_ch * 4.0f / 3.0f * (float)s_out.xscale : (float)s_out.fb_w;   /* DIVERGES: none (4:3 box) until M7 */
     s_cx = ((float)s_out.fb_w - s_cw) * 0.5f;
     s_cy = 0.0f;
     if (XGFX_TITLE_FIT && s_title) {
         /* the title composes its picture inside SUBSCREEN (10..310 x 8..222);
          * DIVERGES: fitted to the content rect with a black margin, as the DC port */
-        float m = TITLE_MARGIN * s_ch / 480.0f;
-        s_sx = (s_cw - 2.0f * m) / 300.0f;
-        s_ox = s_cx + m - 10.0f * s_sx;
+        float m = TITLE_MARGIN * s_ch / 480.0f, mx = m * (float)s_out.xscale;
+        s_sx = (s_cw - 2.0f * mx) / 300.0f;
+        s_ox = s_cx + mx - 10.0f * s_sx;
         s_sy = (s_ch - 2.0f * m) / 214.0f;
         s_oy = s_cy + m - 8.0f * s_sy;
     } else {
@@ -1378,11 +1379,12 @@ void f3d_run(const void* dl) {
     run_dl((const uint32_t*)dl);
     flush();
     if (s_title && XGFX_TITLE_FIT) {   /* the black margin around the fitted title picture (drawn last) */
-        int32_t m = (int32_t)(TITLE_MARGIN * s_ch / 480.0f), cx = (int32_t)s_cx, cw = (int32_t)s_cw, ch = (int32_t)s_ch;
+        int32_t m = (int32_t)(TITLE_MARGIN * s_ch / 480.0f), mx = m * s_out.xscale, cx = (int32_t)s_cx,
+                cw = (int32_t)s_cw, ch = (int32_t)s_ch;
         xgfx_clear(cx, 0, cx + cw, m, 0xFF000000u, 1, 0, 1.0f);
         xgfx_clear(cx, ch - m, cx + cw, ch, 0xFF000000u, 1, 0, 1.0f);
-        xgfx_clear(cx, m, cx + m, ch - m, 0xFF000000u, 1, 0, 1.0f);
-        xgfx_clear(cx + cw - m, m, cx + cw, ch - m, 0xFF000000u, 1, 0, 1.0f);
+        xgfx_clear(cx, m, cx + mx, ch - m, 0xFF000000u, 1, 0, 1.0f);
+        xgfx_clear(cx + cw - mx, m, cx + cw, ch - m, 0xFF000000u, 1, 0, 1.0f);
     }
     wx_frame_overlay();   /* the port's own text (FPS counter, settings panel; patches/021) */
     {

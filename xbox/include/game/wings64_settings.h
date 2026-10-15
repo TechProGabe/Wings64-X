@@ -70,6 +70,9 @@ int wings64_settings_back_pressed(void);
 /* game.c, GAME_STATE_OPTIONS: 1 once if the panel (not the game's Option
  * screen) was asked for. */
 int wings64_settings_take_request(void);
+/* patches/037: a crash jingle started (snd.c sndSetMusic): rumble player 1's
+ * controller (the panel's Rumble row; -DWX_RUMBLE=0 never). */
+void wings64_rumble_crash(void);
 /* The settings panel: runs until the player leaves it, like optionsTopRender(). */
 int wings64_settings_screen(void);
 

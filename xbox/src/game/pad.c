@@ -83,6 +83,17 @@ static void combos(int port, const xhw_pad* p) {
  * controllers for half a second, which leaving takes). */
 static volatile int s_leaving;
 
+/* a rumble asked for (patches/037: the crash jingle), sent at the next
+ * controller read, which holds the controllers (SDL is not thread-safe) */
+static volatile int s_rumble_strength;
+static volatile uint32_t s_rumble_ms;
+
+void wx_pad_rumble(int strength, uint32_t ms) {
+    if (!g_wx_settings.rumble) return;
+    s_rumble_ms = ms;
+    s_rumble_strength = strength;
+}
+
 void wx_pad_quiesce(void) {
     s_leaving = 1;
     while (!__sync_bool_compare_and_swap(&s_busy, 0, 1)) xhw_yield();
@@ -154,6 +165,10 @@ void wx_pad_read(void* out) {
     int i, back;
     while (!__sync_bool_compare_and_swap(&s_busy, 0, 1)) xhw_yield();   /* the VI thread is looking */
     xhw_pad_poll();
+    if (s_rumble_strength) {
+        xhw_pad_rumble(0, s_rumble_strength, s_rumble_ms);
+        s_rumble_strength = 0;
+    }
     back = 0;
     for (i = 0; i < MAXCONTROLLERS; i++) {
         xhw_pad p;

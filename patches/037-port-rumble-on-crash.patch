@@ -1,0 +1,27 @@
+--- a/src/app/snd.c
++++ b/src/app/snd.c
+@@ -5,6 +5,9 @@
+ #include <uv_audio.h>
+ #include <uv_math.h>
+ #include <uv_matrix.h>
++#ifdef WINGS64_XBOX
++#include <wings64_settings.h> // PORT: wings64_rumble_crash (patches/037)
++#endif
+ 
+ Mtx4F D_80373E20;
+ Mtx4F D_80373E60;
+@@ -51,6 +54,14 @@
+ }
+ 
+ void sndSetMusic(u16 musicId) {
++#ifdef WINGS64_XBOX
++    // DIVERGES: the controller rumbles when a crash jingle starts (every vehicle's crash sets one; port setting)
++    if (musicId != gCurrentMusicId &&
++        (musicId == BGM_HANG_GLIDER_CRASH || musicId == BGM_ROCKET_BELT_CRASH || musicId == BGM_GYROCOPTER_CRASH ||
++         musicId == BGM_SKYDIVING_CRASH || musicId == BGM_BIRDMAN_CRASH)) {
++        wings64_rumble_crash();
++    }
++#endif
+     gCurrentMusicId = musicId;
+ }
+ 

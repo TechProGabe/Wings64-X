@@ -122,6 +122,19 @@ void xhw_pad_poll(void) {
 static volatile int s_shots;
 void xhw_pad_set_shots(int on) { s_shots = on; }
 
+void xhw_pad_rumble(int port, int strength, uint32_t ms) {
+    if (port < 0 || port >= PORTS || !s_pad[port]) return;
+    if (strength < 0) strength = 0;
+    if (strength > 65535) strength = 65535;
+    if (SDL_GameControllerRumble(s_pad[port], (Uint16)strength, (Uint16)strength, ms) != 0) {
+        static unsigned logged;
+        if (!(logged & (1u << port))) {
+            logged |= 1u << port;
+            xhw_logf("[PAD] port %d: rumble failed (%s)", port + 1, SDL_GetError());
+        }
+    }
+}
+
 static void shot_button(int port, uint32_t buttons) {
     static uint32_t s_prev[PORTS];
     uint32_t pressed = buttons & ~s_prev[port];
@@ -163,18 +176,6 @@ int xhw_pad_get(int port, xhw_pad* out) {
     xhw_autopad_apply(port, out);
     shot_button(port, out->buttons);
     return 1;
-}
-
-void xhw_pad_rumble(int port, uint16_t low, uint16_t high) {
-    if (port < 0 || port >= PORTS || !s_pad[port]) return;
-    /* renewed every PADRead while the game holds the motor on */
-    if (SDL_GameControllerRumble(s_pad[port], low, high, 100) != 0) {
-        static unsigned logged;
-        if (!(logged & (1u << port))) {
-            logged |= 1u << port;
-            xhw_logf("[PAD] port %d: rumble failed (%s)", port + 1, SDL_GetError());
-        }
-    }
 }
 
 void xhw_pad_shutdown(void) {

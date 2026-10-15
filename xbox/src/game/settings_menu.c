@@ -51,6 +51,7 @@
 #include <wings64_settings.h>
 
 #include "wx_game.h"
+#include "xgfx.h"
 #include "xhw.h"
 
 #if WINGS64_SETTINGS_MENU
@@ -71,9 +72,11 @@ static s16 sOptionsLabel[24];  /* "Port settings" in the Option menu (patches/03
 static s32 sTitleTextRight;    /* where the title's longest port item ends (screen x) */
 static s32 sTitleH;            /* the title menu font's height (font 6 at scale 1) */
 static int sBootOutput = -1;   /* settings.ini's output when this boot started: `*` rows compare with it */
+static int sBootAA = -1;
 
 static void settings_boot_values(void) {
     if (sBootOutput < 0) sBootOutput = g_wx_settings.output;
+    if (sBootAA < 0) sBootAA = g_wx_settings.aa;
 }
 
 /* ------------------------------------------------------------------ glyph strings */
@@ -247,12 +250,15 @@ static void out_text(char* buf, int out) {
 
 /* ------------------------------------------------------------------ the panel */
 
-enum { ROW_VIDEO, ROW_FPS, ROW_SHOTS, ROW_DEADZONE, ROW_RESTART, ROW_RETURN };
+enum { ROW_VIDEO, ROW_FPS, ROW_SHOTS, ROW_DEADZONE, ROW_RESTART, ROW_RETURN, ROW_FILTER, ROW_AA, ROW_RUMBLE };
+
+static const char* const k_filter_names[] = { "N64", "Smooth", "Sharp" };
+static const char* const k_aa_names[] = { "Off", "2x", "4x" };
 
 /* optionsInitMain: menuCreateItems(80, ...); the panel starts further left
    so the value column and the stick readout fit on the 320-wide screen */
 #define PANEL_X 48
-#define MAX_ROWS 6
+#define MAX_ROWS 10
 #define ROW_CAP 44   /* FONT_MAX_MSG_LEN (US) */
 #define REPEAT_FIRST 24   /* retraces held before the dead zone repeats */
 #define REPEAT_EVERY 6
@@ -275,6 +281,12 @@ static const char* row_label(s32 kind) {
     switch (kind) {
     case ROW_VIDEO:
         return "Resolution *";
+    case ROW_FILTER:
+        return "Texture filter";
+    case ROW_AA:
+        return "Anti-aliasing *";
+    case ROW_RUMBLE:
+        return "Rumble";
     case ROW_FPS:
         return "FPS counter";
     case ROW_SHOTS:
@@ -289,7 +301,7 @@ static const char* row_label(s32 kind) {
 }
 
 static int restart_pending(void) {
-    return g_wx_settings.output != sBootOutput;
+    return g_wx_settings.output != sBootOutput || g_wx_settings.aa != sBootAA;
 }
 
 static void panel_set_row(s32 idx) {
@@ -301,6 +313,20 @@ static void panel_set_row(s32 idx) {
     switch (kind) {
     case ROW_VIDEO:
         out_text(v, g_wx_settings.output);
+        break;
+    case ROW_FILTER:
+        snprintf(v, sizeof v, "%s", k_filter_names[g_wx_settings.tex_filter]);
+        break;
+    case ROW_AA:
+        /* supersampling needs the 640x480 32-bit frame (xgfx_set_aa) */
+        snprintf(v, sizeof v, "%s%s", k_aa_names[g_wx_settings.aa],
+                 g_wx_settings.aa && (out_resolved(g_wx_settings.output) == XHW_OUT_720P ||
+                                      out_resolved(g_wx_settings.output) == XHW_OUT_1080I)
+                     ? " > Off"
+                     : "");
+        break;
+    case ROW_RUMBLE:
+        snprintf(v, sizeof v, "%s", g_wx_settings.rumble ? "On" : "Off");
         break;
     case ROW_FPS:
         snprintf(v, sizeof v, "%s", g_wx_settings.fps ? "On" : "Off");
@@ -336,6 +362,9 @@ static void panel_init(void) {
     settings_boot_values();
     sPanelCount = 0;
     sPanelRowKind[sPanelCount++] = ROW_VIDEO;
+    sPanelRowKind[sPanelCount++] = ROW_AA;
+    sPanelRowKind[sPanelCount++] = ROW_FILTER;
+    sPanelRowKind[sPanelCount++] = ROW_RUMBLE;
     sPanelRowKind[sPanelCount++] = ROW_FPS;
     if (XHW_TEST_BUILD) sPanelRowKind[sPanelCount++] = ROW_SHOTS;   /* PLAN.md 3.4: test builds only */
     sPanelRowKind[sPanelCount++] = ROW_DEADZONE;
@@ -379,6 +408,17 @@ static void panel_change(s32 idx, s32 dir) {
         g_wx_settings.output = (g_wx_settings.output + dir + 5) % 5;
         g_wx_settings.progressive = g_wx_settings.output != XHW_OUT_480I;   /* 480i is the one interlaced pick */
         break;
+    case ROW_FILTER:
+        g_wx_settings.tex_filter = (g_wx_settings.tex_filter + dir + 3) % 3;
+        xgfx_set_tex_filter(g_wx_settings.tex_filter);
+        break;
+    case ROW_AA:
+        g_wx_settings.aa = (g_wx_settings.aa + dir + 3) % 3;
+        break;
+    case ROW_RUMBLE:
+        g_wx_settings.rumble = !g_wx_settings.rumble;
+        if (g_wx_settings.rumble) wx_pad_rumble(40000, 250);   /* a taste */
+        break;
     case ROW_FPS:
         g_wx_settings.fps = !g_wx_settings.fps;
         wx_settings_apply_fps();
@@ -416,9 +456,10 @@ static void panel_dpad_move(s32 cur) {
 
 static void panel_save(void) {
     if (!sDirty) return;
-    xhw_logf("[SETTINGS] output %s, fps %d, screenshots %d, stick dead zone %d%%",
-             k_out_names[g_wx_settings.output], g_wx_settings.fps, g_wx_settings.screenshots,
-             g_wx_settings.stick_deadzone);
+    xhw_logf("[SETTINGS] output %s, anti-aliasing %s, texture filter %s, rumble %d, fps %d, screenshots %d, "
+             "stick dead zone %d%%",
+             k_out_names[g_wx_settings.output], k_aa_names[g_wx_settings.aa], k_filter_names[g_wx_settings.tex_filter],
+             g_wx_settings.rumble, g_wx_settings.fps, g_wx_settings.screenshots, g_wx_settings.stick_deadzone);
     wx_settings_save();
     sDirty = 0;
 }

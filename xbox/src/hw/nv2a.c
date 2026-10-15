@@ -89,13 +89,34 @@ static int s_mark_mode = XGFX_SHADOW_MARK;
 static int s_fbw = 640, s_fbh = 480, s_bpp = 32;
 static float s_zmax = 16777215.0f;
 
+/* ---- anti-aliasing by supersampling (the Settings panel's row) ----
+ * At 640x480 32-bit, 2x renders into a 1280x480 surface and 4x into
+ * 1280x960, each with its own Z24S8 buffer; the interpreter sees that size
+ * (xgfx_output, xscale 2), and the present resolves it into the back buffer
+ * with one bilinear draw whose texel centres fall between the samples (a
+ * box filter of 2 or 2x2). Off: the back buffer is the render target. */
+static int s_aa = 1;                 /* xgfx_set_aa: 1, 2 or 4 */
+static int s_rw = 640, s_rh = 480;   /* the render target */
+static void* s_aa_color;             /* the supersampled colour surface, NULL when off */
+static void* s_aa_depth;
+
+void xgfx_set_aa(int samples) { s_aa = samples == 4 ? 4 : samples == 2 ? 2 : 1; }
+
 static uint32_t zeta_pitch(void) {
+    if (s_aa_color) return (uint32_t)s_rw * 4u;
     return pb_back_buffer_width() * (pb_DepthFmt == NV097_SET_SURFACE_FORMAT_ZETA_Z16 ? 2u : 4u);
 }
 
+static uint32_t color_pitch(void) { return s_aa_color ? (uint32_t)s_rw * 4u : pb_back_buffer_pitch(); }
+
+static uint32_t render_color_phys(void) {
+    return (uint32_t)(uintptr_t)(s_aa_color ? s_aa_color : (void*)pb_back_buffer()) & 0x03FFFFFFu;
+}
+
 void xgfx_output(XgfxOutput* out) {
-    out->fb_w = s_fbw;
-    out->fb_h = s_fbh;
+    out->xscale = s_aa_color ? 2 : 1;
+    out->fb_w = s_rw;
+    out->fb_h = s_rh;
     out->bpp = s_bpp;
     out->zmax = s_zmax;
 }
@@ -351,6 +372,7 @@ typedef struct {
     uint32_t gen;       /* a new texture at a freed one's slot differs */
     uint32_t pitch;     /* linear: bytes per row */
     int linear;         /* a view of a surface (not the pool's, never freed here): texel coordinates */
+    int smooth;         /* linear: bilinear (the AA resolve); else nearest */
 } Tex;
 static Tex s_tex[MAX_TEX];
 static int s_tex_next = 1;
@@ -443,6 +465,15 @@ static void* tex_pool_alloc(uint32_t bytes) {
 }
 
 static uint32_t s_tex_epoch;
+static int s_filter_mode;   /* xgfx_set_tex_filter: 0 N64, 1 smooth, 2 sharp */
+
+void xgfx_set_tex_filter(int mode) {
+    if (mode < 0 || mode > 2) mode = 0;
+    if (mode != s_filter_mode) {
+        s_filter_mode = mode;
+        s_tex_epoch++;   /* every unit re-sent */
+    }
+}
 
 uint32_t xgfx_tex_create(uint32_t w, uint32_t h, const uint32_t* argb) {
     static uint32_t s_gen;
@@ -589,7 +620,7 @@ static int s_state_valid;   /* the GPU's state is what our shadows say */
 static int s_zguard = -1;
 static void zeta_guard(void) {
     uint32_t want, v;
-    if (s_zguard < 0) s_zguard = XGFX_ZETA_GUARD && zeta_pitch() != pb_back_buffer_pitch();
+    if (s_zguard < 0) s_zguard = XGFX_ZETA_GUARD && zeta_pitch() != color_pitch();
     if (!s_zguard) return;
     want = zeta_pitch();
     wait_idle();
@@ -597,7 +628,7 @@ static void zeta_guard(void) {
     if (v == want) return;
     {
         uint32_t* p = pb_begin();
-        p = pb_push1(p, NV097_SET_SURFACE_PITCH, pb_back_buffer_pitch() | want << 16);
+        p = pb_push1(p, NV097_SET_SURFACE_PITCH, color_pitch() | want << 16);
         pb_end(p);
     }
 }
@@ -605,8 +636,8 @@ static void zeta_guard(void) {
 static void clear_fb(int x, int y, int w, int h, uint32_t argb, int color, int depth, uint32_t z24) {
     if (x < 0) { w += x; x = 0; }
     if (y < 0) { h += y; y = 0; }
-    if (x + w > s_fbw) w = s_fbw - x;
-    if (y + h > s_fbh) h = s_fbh - y;
+    if (x + w > s_rw) w = s_rw - x;
+    if (y + h > s_rh) h = s_rh - y;
     if (w <= 0 || h <= 0) return;
     pb_close();
     if (depth) zeta_guard();
@@ -634,10 +665,10 @@ static uint32_t* push_screen_target(uint32_t* p) {
     p = pb_push1(p, NV097_SET_CONTEXT_DMA_COLOR, 3);
     p = pb_push1(p, NV097_SET_CONTEXT_DMA_ZETA, 3);
     p = pb_push1(p, NV097_SET_SURFACE_FORMAT, NV097_SET_SURFACE_FORMAT_TYPE_PITCH << 8 | pb_DepthFmt << 4 | pb_ColorFmt);
-    p = pb_push1(p, NV097_SET_SURFACE_PITCH, pb_back_buffer_pitch() | zeta_pitch() << 16);
-    p = pb_push1(p, NV097_SET_SURFACE_CLIP_HORIZONTAL, (uint32_t)s_fbw << 16);
-    p = pb_push1(p, NV097_SET_SURFACE_CLIP_VERTICAL, (uint32_t)s_fbh << 16);
-    p = pb_push1(p, NV097_SET_SURFACE_COLOR_OFFSET, (uint32_t)pb_back_buffer() & 0x03FFFFFFu);
+    p = pb_push1(p, NV097_SET_SURFACE_PITCH, color_pitch() | zeta_pitch() << 16);
+    p = pb_push1(p, NV097_SET_SURFACE_CLIP_HORIZONTAL, (uint32_t)s_rw << 16);
+    p = pb_push1(p, NV097_SET_SURFACE_CLIP_VERTICAL, (uint32_t)s_rh << 16);
+    p = pb_push1(p, NV097_SET_SURFACE_COLOR_OFFSET, render_color_phys());
     p = pb_push1(p, NV097_SET_SURFACE_ZETA_OFFSET, s_depth_phys);
     return p;
 }
@@ -658,7 +689,7 @@ void xgfx_frame_begin(void) {
     s_ring_pos = 0;
     s_frame_open = 1;
     nv2a_fault_frame = s_frame;
-    clear_fb(0, 0, s_fbw, s_fbh, 0xFF000000u, 1, 1, 0xFFFFFF);
+    clear_fb(0, 0, s_rw, s_rh, 0xFF000000u, 1, 1, 0xFFFFFF);
 }
 
 /* restart at the pushbuffer head when a frame gets close to its end:
@@ -783,10 +814,53 @@ void nv2a_vbl_probe(void) {
         }
 }
 
+static uint32_t linear_tex(void* mem, int w, int h, uint32_t pitch);
+
+/* the supersampled frame into the back buffer: texel coordinates 0..s_rw
+ * across 0..s_fbw put each output pixel's centre between 2 (or 2x2) samples,
+ * which bilinear filtering averages */
+static void aa_resolve(void) {
+    XgfxState st;
+    XgfxVtx q[6];
+    uint32_t tex = linear_tex(s_aa_color, s_rw, s_rh, color_pitch());
+    int i;
+    if (!tex) return;
+    s_tex[tex].smooth = 1;
+    pb_open();
+    put1(NV097_SET_SURFACE_PITCH, pb_back_buffer_pitch() | zeta_pitch() << 16);
+    put1(NV097_SET_SURFACE_CLIP_HORIZONTAL, (uint32_t)s_fbw << 16);
+    put1(NV097_SET_SURFACE_CLIP_VERTICAL, (uint32_t)s_fbh << 16);
+    put1(NV097_SET_SURFACE_COLOR_OFFSET, (uint32_t)(uintptr_t)pb_back_buffer() & 0x03FFFFFFu);
+    memset(&st, 0, sizeof st);
+    /* TEXEL0 in both cycles (the interpreter's cc_words_const(1, 1)) */
+    st.cc0 = (15u << 20) | (31u << 15) | (7u << 12) | (7u << 9) | (15u << 5) | 31u;
+    st.cc1 = (15u << 28) | (1u << 15) | (7u << 12) | (1u << 9) | (15u << 24) | (7u << 21) | (7u << 18) | (1u << 6) |
+             (7u << 3) | 1u;
+    st.tex[0] = tex;
+    st.wrap_s[0] = st.wrap_t[0] = XGFX_WRAP_CLAMP;
+    st.filter[0] = 1;
+    st.color_write = 1;
+    st.scissor[2] = s_fbw;
+    st.scissor[3] = s_fbh;
+    memset(q, 0, sizeof q);
+    for (i = 0; i < 6; i++) {
+        static const uint8_t corner[6] = { 0, 1, 2, 2, 1, 3 };
+        int c = corner[i];
+        q[i].x = (c & 1) ? (float)s_fbw : 0.0f;
+        q[i].y = (c & 2) ? (float)s_fbh : 0.0f;
+        q[i].w = 1.0f;
+        q[i].s0 = (c & 1) ? (float)s_rw : 0.0f;
+        q[i].t0 = (c & 2) ? (float)s_rh : 0.0f;
+    }
+    xgfx_draw(&st, q, 2);
+    xgfx_tex_destroy(tex);
+}
+
 void xgfx_present(void) {
     int shot;
     xgfx_frame_begin();
     pb_budget();
+    if (s_aa_color) aa_resolve();
     if (s_fps_on) fps_overlay();
     shot = xhw_shot_take();
     s_last_fb = pb_back_buffer();
@@ -1019,7 +1093,8 @@ static void emit_textures(const XgfxState* st) {
             put1(NV097_SET_TEXTURE_IMAGE_RECT + b, (uint32_t)t->w << 16 | t->h);
             put1(NV097_SET_TEXTURE_ADDRESS + b, 3u | (3u << 8) | (3u << 16));
             put1(NV097_SET_TEXTURE_CONTROL0 + b, 0x4003FFC0u);
-            put1(NV097_SET_TEXTURE_FILTER + b, (1u << 16) | (1u << 24) | 0x2000u);
+            put1(NV097_SET_TEXTURE_FILTER + b, t->smooth ? (2u << 16) | (2u << 24) | 0x2000u
+                                                         : (1u << 16) | (1u << 24) | 0x2000u);
             continue;
         }
         put1(NV097_SET_TEXTURE_FORMAT + b, 1 | (1u << 3) | (2u << 4) |
@@ -1028,8 +1103,15 @@ static void emit_textures(const XgfxState* st) {
         put1(NV097_SET_TEXTURE_ADDRESS + b, wrap_mode(st->wrap_s[u]) | (wrap_mode(st->wrap_t[u]) << 8) | (3u << 16));
         put1(NV097_SET_TEXTURE_CONTROL0 + b, 0x4003FFC0u);
         {
-            uint32_t f = st->filter[u] ? 2u : 1u;   /* LINEAR / NEAREST */
-            put1(NV097_SET_TEXTURE_FILTER + b, (f << 16) | (f << 24) | 0x2000u);
+            /* the Settings panel's texture filter: N64 (the game's choice per
+             * texture: LINEAR or NEAREST), Smooth (its LINEAR ones through
+             * the NV2A's 3x3 Gaussian convolution: min 7, mag 4, kernel 2),
+             * Sharp (NEAREST everywhere) */
+            uint32_t f = st->filter[u] && s_filter_mode != 2 ? 2u : 1u;
+            if (f == 2 && s_filter_mode == 1)
+                put1(NV097_SET_TEXTURE_FILTER + b, (7u << 16) | (4u << 24) | (2u << 13));
+            else
+                put1(NV097_SET_TEXTURE_FILTER + b, (f << 16) | (f << 24) | 0x2000u);
         }
     }
     SETF(F_TEX_PROG, NV097_SET_SHADER_STAGE_PROGRAM, prog);
@@ -1102,8 +1184,8 @@ static void emit_fixed(const XgfxState* st) {
              (uint32_t)st->fog_color[0] | (uint32_t)st->fog_color[1] << 8 | (uint32_t)st->fog_color[2] << 16);
     if (x0 < 0) x0 = 0;
     if (y0 < 0) y0 = 0;
-    if (x1 > s_fbw) x1 = s_fbw;
-    if (y1 > s_fbh) y1 = s_fbh;
+    if (x1 > s_rw) x1 = s_rw;
+    if (y1 > s_rh) y1 = s_rh;
     if (x1 <= x0 || y1 <= y0) { x0 = y0 = 0; x1 = y1 = 1; }
     SETF(F_CLIP_H, NV097_SET_WINDOW_CLIP_HORIZONTAL, (uint32_t)x0 | ((uint32_t)(x1 - 1) << 16));
     SETF(F_CLIP_V, NV097_SET_WINDOW_CLIP_VERTICAL, (uint32_t)y0 | ((uint32_t)(y1 - 1) << 16));
@@ -1245,6 +1327,7 @@ static uint32_t linear_tex(void* mem, int w, int h, uint32_t pitch) {
     if (!id || !mem) return 0;
     s_tex[id].used = 1;
     s_tex[id].linear = 1;
+    s_tex[id].smooth = 0;
     s_tex[id].w = (uint16_t)w;
     s_tex[id].h = (uint16_t)h;
     s_tex[id].bytes = 0;
@@ -1265,13 +1348,13 @@ uint32_t xgfx_tex_linear_last(float* w, float* h) {
 int xgfx_target_hold(int on) {
     uint32_t addr;
     if (on && !s_hold_mem) {
-        s_hold_mem = MmAllocateContiguousMemoryEx(pb_back_buffer_pitch() * (uint32_t)s_fbh, 0, MAXRAM, 4096,
+        s_hold_mem = MmAllocateContiguousMemoryEx(color_pitch() * (uint32_t)s_rh, 0, MAXRAM, 4096,
                                                   PAGE_READWRITE | PAGE_WRITECOMBINE);
         if (!s_hold_mem) xhw_log("[NV2A] hold surface: no contiguous memory (the CPU capture is used)");
     }
     if (!s_hold_mem) return 0;
     xgfx_frame_begin();
-    addr = (uint32_t)(uintptr_t)(on ? s_hold_mem : pb_back_buffer()) & 0x03FFFFFFu;
+    addr = on ? (uint32_t)(uintptr_t)s_hold_mem & 0x03FFFFFFu : render_color_phys();
     pb_open();
     put1(NV097_SET_SURFACE_COLOR_OFFSET, addr);
     return 1;
@@ -1279,9 +1362,9 @@ int xgfx_target_hold(int on) {
 
 uint32_t xgfx_tex_linear_hold(float* w, float* h) {
     if (!s_hold_mem) return 0;
-    *w = (float)s_fbw;
-    *h = (float)s_fbh;
-    return linear_tex(s_hold_mem, s_fbw, s_fbh, pb_back_buffer_pitch());
+    *w = (float)s_rw;
+    *h = (float)s_rh;
+    return linear_tex(s_hold_mem, s_rw, s_rh, color_pitch());
 }
 
 uint32_t xgfx_capture_last(float* u_max, float* v_max) {
@@ -1415,6 +1498,27 @@ int xgfx_init(void) {
         unsigned l[8];
         ocx_pb_layout(l);
         s_depth_phys = l[6] & 0x03FFFFFFu;
+    }
+    s_rw = s_fbw;
+    s_rh = s_fbh;
+    if (s_aa > 1 && (s_bpp != 32 || s_fbw != 640)) {
+        xhw_logf("[NV2A] anti-aliasing %dx: only at 640x480 32-bit, off", s_aa);
+    } else if (s_aa > 1) {
+        int rw = s_fbw * 2, rh = s_aa == 4 ? s_fbh * 2 : s_fbh;
+        uint32_t bytes = (uint32_t)rw * 4u * (uint32_t)rh;
+        s_aa_color = MmAllocateContiguousMemoryEx(bytes, 0, MAXRAM, 4096, PAGE_READWRITE | PAGE_WRITECOMBINE);
+        s_aa_depth = MmAllocateContiguousMemoryEx(bytes, 0, MAXRAM, 4096, PAGE_READWRITE | PAGE_WRITECOMBINE);
+        if (s_aa_color && s_aa_depth) {
+            s_rw = rw;
+            s_rh = rh;
+            s_depth_phys = (uint32_t)(uintptr_t)s_aa_depth & 0x03FFFFFFu;
+            xhw_logf("[NV2A] anti-aliasing %dx: rendering %dx%d, resolved at present", s_aa, rw, rh);
+        } else {
+            if (s_aa_color) MmFreeContiguousMemory(s_aa_color);
+            if (s_aa_depth) MmFreeContiguousMemory(s_aa_depth);
+            s_aa_color = s_aa_depth = NULL;
+            xhw_logf("[NV2A] anti-aliasing %dx: no contiguous memory for %u KB, off", s_aa, (unsigned)(bytes / 512u));
+        }
     }
     tiles_setup();
     pb_show_front_screen();

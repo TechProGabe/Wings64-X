@@ -128,8 +128,8 @@ enum {
 };
 void xhw_pad_poll(void);
 void xhw_pad_set_shots(int on);                /* BACK screenshots (always on in test builds) */
+void xhw_pad_rumble(int port, int strength, uint32_t ms);   /* both motors, 0..65535; no-op without a pad */
 int xhw_pad_get(int port, xhw_pad* out);       /* port 0..3; returns connected */
-void xhw_pad_rumble(int port, uint16_t low, uint16_t high);
 
 /* ---- video ---- */
 typedef struct xhw_video_mode {

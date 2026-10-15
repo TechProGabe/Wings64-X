@@ -189,6 +189,15 @@ Even 1080i leaves > 15 MB free; 720p > 25 MB. pbkit needs the framebuffers
 contiguous, so the mode decision checks `xhw_mem_free_kb()` before `pb_init`, as
 Melee-X does for 720p (32 MB free rule).
 
+**64 MB is enforced** (maintainer decision 2026-10-15). A 128 MB console runs as a
+stock one: `xhw_ramlock.c` (OpenCrossing's `xbox_ramlock.c` / Melee-X's
+`xhw_mem_hold_upper`) holds every page above 64 MB first thing in `main_body`,
+before anything allocates, and cxbe marks the XBE "limit to 64 MB". Reasons as in
+those ports: pbkit and the back end mask GPU addresses with `0x03FFFFFF`, and
+allocations that would fail on 64 MB (and fall back) must fail the same way on
+every console. `[MEM] boot` logs the held amount; kill switch `-DXHW_RAM_LOCK64=0`
+for diagnosis only.
+
 ### D3. Toolchain: nxdk at Melee-X's pin, two compile setups
 
 - nxdk `58427c078b4ccb0121f359b6b6c536b3b2914976` with LLVM 21.1.8, exactly
@@ -296,6 +305,23 @@ SP graphics task run synchronously inside `osSpTaskStartGo` on the calling threa
 `memcpy` + post `OSIoMesg`, `osGetTime`/`osGetCount` from rdtsc scaled to the N64's
 46.875 MHz count, `osSetIntMask`/`__osDisableInt` → a recursive spinlock (Melee-X's
 interrupt lock), MIO0 in C, `osMemSize = 0x400000`, `osTvType = NTSC`, `osViModeTable`.
+**Time comes from the vblank and the ACPI timer, never from an assumed CPU
+clock** (maintainer decision 2026-10-15: upgraded and overclocked CPUs must work).
+Frame pacing is the retrace (`xhw_wait_vblank`, 60.000 Hz), audio pacing is the
+AC97's consumption, and `osGetTime`/`osGetCount`/`osSetTimer` are derived from
+rdtsc **calibrated at boot** against the ACPI power-management timer (3.375 MHz
+from a crystal, independent of the CPU; OpenCrossing `docs/traps.md` "clock":
+nxdk's `KeQueryPerformanceFrequency` guesses the CPU clock from multiplier and
+FSB with a 733 MHz fallback and is wrong on a CPU upgrade). The calibration is
+re-checked every few seconds against the retrace count and logged as `[CLOCK] cpu
+N MHz` (a 1.0/1.4 GHz Tualatin or a modchip's overclock shows up here; the game
+must run identically). Two more hazards from those ports: some BIOS/modchip
+firmware rewrites `rdtsc` (`0f 31`) into `int 2Eh` in titles on upgraded CPUs
+(OpenCrossing issue #3, `xbox_code_repair.c`): the clock code tolerates it by
+reading time through one function the repair step can verify, and nothing in a
+hot loop depends on rdtsc; and a faster CPU finishes the N64's 30 Hz tick early,
+which only means more idle waiting at the retrace, never a faster game.
+
 The Xbox kernel is strictly priority-preemptive (unlike KOS v2.2.2's tick
 scheduling that cost wings64-dc 44 % of every frame), but patches 022 and 023 stay:
 a spinning kernel idle thread still burns a core the renderer wants. Fallback if
@@ -341,8 +367,9 @@ API, `aica_synth.c` lineage) with a software voice mixer on the Xbox. Less exact
 ### D8. Input
 
 N64 pad → Xbox (Duke and S), player 1 only (the game is single-player; ports 2–4
-are read but ignored), remappable per `settings.ini` as Melee-X. Proposed default
-(maintainer to confirm, §7):
+are read but ignored), remappable per `settings.ini` as Melee-X. Default layout
+(maintainer 2026-10-15: "whatever makes sense"; this is it, by position and by
+Pilotwings' use of the buttons):
 
 | N64 | Xbox |
 |---|---|
@@ -455,9 +482,10 @@ Rules (Melee-X `xhw_video.c` extended):
 | 720p | 1280x720 R5G6B5 + Z24S8, always 16:9 | HDTV/VGA pack, dashboard 720p flag, `output = 720p` or Auto, ≥ 32 MB free |
 | 1080i | 1920x1080 R5G6B5 + Z24S8 (Z16 retry), always 16:9 | HDTV/VGA pack, dashboard 1080i flag (EEPROM video flags bit 0x00040000, next to 720p's 0x00020000 and 480p's 0x00080000), `output = 1080i`, ≥ 40 MB free |
 
-Auto picks the highest the dashboard allows **except 1080i**, which is opt-in
-(interlaced flicker and fill rate make 720p the better default; the maintainer
-may flip this, §7). The settings only allow a mode; the dashboard has to allow it
+Auto picks the highest the dashboard allows, **1080i included** (maintainer
+decision 2026-10-15). The confirmation net of §3.3 covers a TV that takes the
+dashboard's 1080i flag but shows nothing, and the Video output row lets a user pin
+720p if 1080i flickers on their set. The settings only allow a mode; the dashboard has to allow it
 too; `[VIDEO] dashboard: encoder %08x, AV pack %u, widescreen %d, 480p %d, 720p
 %d, 1080i %d` is logged at every boot.
 
@@ -468,16 +496,22 @@ onto the content rect; at 4:3 that is the whole framebuffer. For 16:9:
   column (the standard sm64ex/Birdman64 trick), so the vertical field of view and
   the HUD's size are unchanged and more world is visible left and right. The
   game's own culling is for a 4:3 frustum (the camera arrays of patch 020), so
-  objects may pop at the edges; Birdman64's widescreen patches (`hud.c`, `chan.c`,
-  `code_7150.c`, `code_D2B10.c`, `font.c`, MIT) fix culling and anchor the HUD and
-  are the second step if pop-in shows.
-- **2D** (`TEXRECT`/`FILLRECT`, text, menus, HUD): drawn into a centred 4:3 box
-  (960x720 in 1280x720; 1440x1080 in 1920x1080; 480x480 of a 640x480 anamorphic
-  frame), so the HUD keeps its proportions and position relative to the picture.
-  Full-screen 2D (title backdrops, SUBSCREEN fades, the sky strip, the results
-  letterbox) is stretched to the full framebuffer: the interpreter knows these by
-  size (a rect covering ≥ 300x220 of the 320x240 space) and by the DC port's list
+  objects may pop at the edges; Birdman64's widescreen patches widen the culling
+  too and come in with the HUD patches below.
+- **2D**: the flight HUD is **anchored to the 16:9 edges** (maintainer decision
+  2026-10-15) with Birdman64's HUD patches (`hud.c`, `chan.c`, `code_7150.c`,
+  `code_D2B10.c`, `font.c`, MIT) imported into `patches/` and re-guarded: the game
+  itself places HUD elements relative to a wider logical screen, so the
+  interpreter's 2D mapping is a plain scale of the logical width onto the
+  framebuffer. Menus, text screens and other 2D that the patches do not touch
+  keep their 4:3 proportions inside a centred box (960x720 in 1280x720; 1440x1080
+  in 1920x1080; 480x480 of a 640x480 anamorphic frame). Full-screen 2D (title
+  backdrops, SUBSCREEN fades, the sky strip, the results letterbox) is stretched
+  to the full framebuffer: the interpreter knows these by size (a rect covering
+  ≥ 300x220 of the 320x240 space) and by the DC port's list
   (`WINGS64_OVERLAY_FULL`, `WINGS64_TITLE_FIT` cases). Pillarbox bars are black.
+  First step in M6 is the centred box alone (no game-code change); the HUD
+  patches land in the same milestone once the box is right.
 - **Widescreen Off** at 720p/1080i: a 4:3 content rect centred in the 16:9
   framebuffer, no hor+. At 480 the dashboard's widescreen flag decides for Auto.
 - The menu shows the result ("Auto, 16:9") as OpenCrossing's does.
@@ -561,7 +595,9 @@ also run the smoke script, "console" means a real Xbox (480i on gold, HD on red)
   (Melee-X's minus `disc_lower`); `xbox/src/hw/`: `xhw_main.c`, `xhw_splash.c`,
   `xhw_sys.c`, `xhw_video.c` (480 only for now), `xhw_pad.c`, `xhw_watchdog.c`,
   `xhw_crash.c`, `xhw_string.c`, `xhw_fbdump.c`, `xhw_autopad.c` (copied from
-  Melee-X with the Melee-specific lines removed); `xbox/include/xhw.h`;
+  Melee-X with the Melee-specific lines removed), `xhw_ramlock.c` (64 MB
+  enforced, D2), `xhw_clock.c` (ACPI-calibrated time, `[CLOCK]` line, D5);
+  `xbox/include/xhw.h`;
   `xbox/assets/logo.png` + `tools/xbox/{make_logo.py,xbe_title_image.py}` with a
   new title ID (`57580001`, "WX"; §7); `tools/xbox/xemu_run.sh`,
   `fbdump_to_png.py`, `console.py`, `sym.py`; `.gitignore` (ROMs, `build-xbox/`,
@@ -571,8 +607,9 @@ also run the smoke script, "console" means a real Xbox (480i on gold, HD on red)
 - **Risks / open**: nxdk pin builds on the CI runner (Melee-X's cache keyed on
   `setup.sh` works); the title ID must not collide.
 - **Verify**: xemu: splash, then the card, then quit (`[BOOT]` lines, `[FBDUMP]`
-  shot of the splash via `-DXHW_SPLASH_DUMP`). Console: the same, `boot.log` in
-  `E:\UDATA\57580001\`, icon in the dashboard.
+  shot of the splash via `-DXHW_SPLASH_DUMP`); xemu at 128 MB (Cerbios) logs the
+  upper 64 MB held. Console: the same, `boot.log` in `E:\UDATA\57580001\`,
+  `[CLOCK]` within 1 % of the console's known CPU clock, icon in the dashboard.
 
 ### M1 — ROM validation
 - **Goal**: §3.1 complete; the game is not linked yet, so a valid ROM ends on a
@@ -686,7 +723,8 @@ also run the smoke script, "console" means a real Xbox (480i on gold, HD on red)
   counter, the three fallbacks.
 - **Files**: `xhw_video.c` (1080i, Z16 retry chain, pending/confirm), `nv2a.c`
   (content rect, 16-bit paths at 1080i, pool sizes per mode, re-init for the live
-  fallback), `f3d_interp.c` (hor+, HUD box, full-screen 2D detection),
+  fallback), `f3d_interp.c` (hor+, 2D box, full-screen 2D detection),
+  `patches/` + Birdman64's widescreen/HUD patches (re-guarded, each with a `.md`),
   `xhw_overlay.c` (confirm prompt, notices), `xbox/src/game/settings.c` (the
   panel), patch 021 (re-guarded; the hooks), `settings.c` (keys), `xsdk_early`
   BACK handling, `docs/platform.md`, `README.md` "Video".
@@ -732,8 +770,14 @@ also run the smoke script, "console" means a real Xbox (480i on gold, HD on red)
   shows the same pilots.
 
 ### M8 — Performance and hardening
-- **Goal**: 60 fps where the game allows it, never under 30, at every mode; a
-  2-hour burn-in at 720p and at 480i with no crash, hang, leak or audio fault.
+- **Goal**: presentation at a locked 60 Hz at every mode (menus and 2D at 60 fps;
+  flight at the game's own 30 Hz logic rate, every frame on time: maintainer
+  decision 2026-10-15, "present at 60, logic at 30"); a 2-hour burn-in at 720p
+  and at 480i with no crash, hang, leak or audio fault; the same behaviour on a
+  733 MHz console and on an upgraded CPU.
+  True 60 fps flight (Birdman64's ~20 rate-decoupling patches, MIT) is **not**
+  in this plan; it is the first candidate for a post-release milestone, since it
+  changes physics timing and invalidates the replay oracle until re-validated.
 - **Files**: `xhw_prof.c` + `prof_report.py` (sampling profiler), `[MEMB]`
   memory breakdown, `[BEAT]`; `order.txt`/ThinLTO/PGO only if the profile shows
   the interpreter or the game thread bound; `nv2a.c` state-diff and texture
@@ -741,8 +785,10 @@ also run the smoke script, "console" means a real Xbox (480i on gold, HD on red)
 - **Depends on**: M7.
 - **Risks / open**: 1080i fill rate; the AC97 pump under load; long-uptime
   leaks (Melee-X's SDL event queue lesson is already in `xhw_pad.c`).
-- **Verify**: `[PERF]` on the console per scene; two burn-ins (`console_round.py`
-  style) with logs pulled and read; `[MEMB]` flat over two hours.
+- **Verify**: `[PERF]` on the console per scene (no missed retrace in flight);
+  two burn-ins (`console_round.py` style) with logs pulled and read; `[MEMB]` flat
+  over two hours; if an upgraded-CPU console is available, one run there with
+  `[CLOCK]` and `[PERF]` compared.
 
 ### M9 — Release
 - **Goal**: `Wings64-X-<tag>.zip` from the GitHub `build` workflow with a release
@@ -751,10 +797,12 @@ also run the smoke script, "console" means a real Xbox (480i on gold, HD on red)
 - **Files**: `.github/workflows/build.yml` (release step), `tools/xbox/package_release.py`
   (refuses `XBOX_CFLAGS` builds), `.github/release-notes.md`, `README.md`
   (install, ROM requirements, video, settings, controls, troubleshooting, in
-  Melee-X's voice), `LICENSE.md` (decomp MIT; Birdman64-derived patches MIT;
-  wings64-dc-derived interpreter and shim; Melee-X/OpenCrossing port layer and
-  their terms: Melee-X's `xbox/` is GPL-3.0-or-later, OpenCrossing's MIT — pick
-  the port's licence accordingly, §7), `docs/` complete.
+  Melee-X's voice), `LICENSE.md`: the port's own code is **MIT** (maintainer decision
+  2026-10-15); it lists the decomp (MIT), Birdman64-derived patches (MIT),
+  wings64-dc-derived interpreter and shim (the maintainer's), OpenCrossing-Xbox
+  (MIT) and the Melee-X-derived files, which the maintainer relicenses as their
+  author (Melee-X's `xbox/` is GPL-3.0-or-later only because of melee-pc, none of
+  which is used here; `LICENSE.md` must say so), `docs/` complete.
 - **Depends on**: M8.
 - **Verify**: the workflow run's zip installs on both consoles from scratch and
   plays a mission; the README's steps were followed literally by the maintainer.
@@ -782,6 +830,9 @@ also run the smoke script, "console" means a real Xbox (480i on gold, HD on red)
 | audio HLE too slow | low | medium | D6 fallback mixer |
 | nxdk has no 1080i mode | medium | low | add it (kernel `AvSetDisplayMode`), ship experimental |
 | title ID collides with another homebrew | low | low | check xboxdevwiki's list before M0 |
+| upgraded/overclocked CPU: wrong clock guess, patched `rdtsc`, early ticks | medium | high | ACPI-calibrated time, vblank pacing, `[CLOCK]` check, OpenCrossing's code-repair lesson (D5) |
+| 128 MB console behaves differently | medium | medium | `xhw_ramlock.c` holds the upper 64 MB at boot; XBE limited to 64 MB (D2) |
+| J/E ROM users | n/a | low | refused with a clear card (§3.1); no plan for a JP build |
 | xemu hides hardware-only rendering order | high | medium | console shots on every milestone, BACK screenshots |
 
 ---
@@ -809,35 +860,34 @@ tools/xbox/ setup.sh docker/ msys/ compile_game.py fetch_decomp.sh xemu_run.sh f
 
 ---
 
-## 7. Decisions needed from the maintainer
+## 7. Maintainer decisions
 
-1. **Default button layout** (D8): confirm B = X, C-buttons on the right stick +
-   Y/B/White/Black, Z = LT, R = RT, L unmapped.
-2. **1080i in Auto?** The plan makes 1080i opt-in and Auto top out at 720p.
-3. **Frame rate**: N64 timing (the game's 30 fps logic, vsync at 60) or
-   Birdman64's frame-rate decoupling patches (~20, MIT) for 60 fps in flight. The
-   plan ships N64 timing and lists decoupling as a post-M8 option.
-4. **Widescreen HUD**: HUD kept in the centred 4:3 box (plan) or anchored to the
-   16:9 edges with Birdman64's HUD patches (step 2 only if asked).
-5. **Title ID**: `57580001` proposed. Also the dashboard icon's look (Melee-X's
-   orange X; OpenCrossing's leaf): a glider silhouette on the same style?
-6. **Licence of the port code**: Melee-X's `xbox/` is GPL-3.0-or-later because
-   of melee-pc; nothing GPL is needed here, so MIT (as OpenCrossing and the
-   decomp) is possible if the Melee-X files are re-licensed by their author (the
-   maintainer). Which?
-7. **Save interchange format**: `.eep` (emulator byte order) as proposed, or a
-   port-private file.
-8. **J/E ROMs**: refused by design (the decomp matches US only). Keep refusing, or
-   plan a JP build later (the decomp has a `config/jp`)?
-9. **Audio approach**: RSP HLE (D6, exact, more work) first, or the DC's voice
-   mixer cut (faster to first sound, no reverb) first with HLE later.
-10. **The platform BACK menu** (Melee-X's CPU-drawn panel) as an emergency menu in
-    addition to the in-game one: not planned; say if wanted.
-11. **Guard macro name** for the imported patches: `WINGS64_XBOX` (plan) vs
-    keeping `WINGS64_DC` to apply wings64-dc's future patches unchanged.
-12. **Confirmation timeout** for a new video mode: 15 s proposed.
-13. **Upstream policy**: the decomp's `CONTRIBUTING.md` forbids AI-generated code
-    in contributions and asks agents to discourage AI analysis of the project.
-    The plan treats the decomp as an MIT dependency consumed downstream at a pin
-    (as wings64-dc does) and never contributes upstream; confirm that this is
-    the stance you want recorded in `CLAUDE.md`.
+### Taken (2026-10-15)
+
+| question | decision | where it lands |
+|---|---|---|
+| Frame rate | **present at 60 Hz, game logic at 30 Hz**; no rate-decoupling patches now; true 60 fps flight is the first post-release candidate | M8, D5 |
+| Button layout | the D8 table ("whatever makes sense") | D8, M3 |
+| 1080i in Auto | **yes**, Auto tops out at 1080i where the dashboard allows it | §3.2, M6 |
+| J/E ROMs | **refused** with a clear card; no JP build planned | §3.1, M1 |
+| Memory | **64 MB enforced**: 128 MB consoles run as 64 MB, held at boot | D2, M0 |
+| CPU | **upgraded/overclocked CPUs must work**: time from the ACPI timer and the vblank, never an assumed 733 MHz; `[CLOCK]` logged | D5, M0, M8 |
+| Audio | **RSP audio HLE first**, the voice-mixer cut as the fallback switch | D6, M5 |
+| 16:9 HUD | **anchored to the 16:9 edges** with Birdman64's HUD patches, after the centred box works | §3.2, M6 |
+| Licence | **MIT** for the port's own code; Melee-X-derived files relicensed by their author | M9 |
+
+### Defaults applied unless the maintainer objects
+
+1. **Title ID** `57580001` ("WX") and a dashboard icon in the Melee-X/OpenCrossing
+   style (a glider silhouette): check xboxdevwiki's title-ID list first.
+2. **Save interchange**: the EEPROM image as `pilotwings64.eep` in emulator byte
+   order (Project64/Mupen compatible).
+3. **Patch guard macro** `WINGS64_XBOX` (wings64-dc's `WINGS64_DC` renamed on
+   import, recorded in each patch's `.md`).
+4. **Video-mode confirmation timeout** 15 s (§3.3).
+5. **No platform-drawn emergency menu** (Melee-X's BACK panel); BACK on the title
+   opens the in-game Settings panel instead.
+6. **Upstream policy**: the decomp is consumed downstream under MIT at a pinned
+   commit and nothing is contributed upstream, as in wings64-dc; its
+   `CONTRIBUTING.md` forbids AI-generated contributions and asks agents to
+   discourage AI analysis of the project, which `CLAUDE.md` will record.

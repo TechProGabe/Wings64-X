@@ -6,6 +6,8 @@
     MX_ROM=<your rom> tools/xbox/console.py deploy v33   # also put your ROM next to default.xbe (once)
     tools/xbox/console.py pull v33             # logs + shots (+ prof.bin) -> hw/logs33
     tools/xbox/console.py ls                   # what's in the log folder
+    tools/xbox/console.py debug "shadow_mark = 0"   # test builds' A/B switches (debug.txt in the log folder)
+    tools/xbox/console.py debug ""             # remove debug.txt (every switch at its default)
 
 hw/ is ~/xemu/hw unless MX_HW is set. The console's FTP server is at
 MX_FTP_HOST (its IP, shown by the dashboard), login xbox/xbox unless
@@ -174,8 +176,25 @@ def pull(v):
     print(f"{len(names)} files in {out}")
 
 
+def debug(text):
+    """Write (or with "" delete) debug.txt, read once at boot by test builds (xhw_debug.c)."""
+    f = connect()
+    cd(f, UDATA)
+    if text.strip():
+        data = (text.replace("\\n", "\n").rstrip("\n") + "\n").encode()
+        f.storbinary("STOR debug.txt", io.BytesIO(data))
+        print(f"debug.txt written: {data.decode().strip()}")
+    else:
+        try:
+            f.delete("debug.txt")
+            print("debug.txt removed")
+        except ftplib.error_perm:
+            print("no debug.txt there")
+    f.quit()
+
+
 def main():
-    if len(sys.argv) < 2 or sys.argv[1] not in ("stage", "deploy", "pull", "ls"):
+    if len(sys.argv) < 2 or sys.argv[1] not in ("stage", "deploy", "pull", "ls", "debug"):
         sys.exit(__doc__)
     cmd = sys.argv[1]
     if cmd == "ls":
@@ -185,7 +204,7 @@ def main():
         return
     if len(sys.argv) < 3:
         sys.exit(__doc__)
-    {"stage": stage, "deploy": deploy, "pull": pull}[cmd](sys.argv[2])
+    {"stage": stage, "deploy": deploy, "pull": pull, "debug": debug}[cmd](sys.argv[2])
 
 
 if __name__ == "__main__":

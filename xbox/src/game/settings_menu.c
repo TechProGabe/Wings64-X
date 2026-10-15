@@ -267,6 +267,7 @@ static s32 sPanelRowKind[MAX_ROWS];
 static s32 sPanelCount;
 static s16 sRowText[MAX_ROWS][ROW_CAP];
 static s16 sLegend[ROW_CAP];
+static s16 sAANote[ROW_CAP];   /* the hint under the rows when anti-aliasing can't apply */
 static s16* sReturnText;
 static s32 sStickHeld;
 static u8 sDirty;
@@ -300,6 +301,13 @@ static const char* row_label(s32 kind) {
     }
 }
 
+/* anti-aliasing is set but the resolution (as it will boot) is 720p/1080i:
+   there it would need 11-25 MB the console doesn't have to spare */
+static int aa_blocked(void) {
+    int r = out_resolved(g_wx_settings.output);
+    return r == XHW_OUT_720P || r == XHW_OUT_1080I;
+}
+
 static int restart_pending(void) {
     return g_wx_settings.output != sBootOutput || g_wx_settings.aa != sBootAA;
 }
@@ -318,12 +326,9 @@ static void panel_set_row(s32 idx) {
         snprintf(v, sizeof v, "%s", k_filter_names[g_wx_settings.tex_filter]);
         break;
     case ROW_AA:
-        /* supersampling needs the 640x480 32-bit frame (xgfx_set_aa) */
-        snprintf(v, sizeof v, "%s%s", k_aa_names[g_wx_settings.aa],
-                 g_wx_settings.aa && (out_resolved(g_wx_settings.output) == XHW_OUT_720P ||
-                                      out_resolved(g_wx_settings.output) == XHW_OUT_1080I)
-                     ? " > Off"
-                     : "");
+        /* supersampling needs the 640x480 32-bit frame (xgfx_set_aa): at
+           720p/1080i it says so here and in the hint under the rows */
+        snprintf(v, sizeof v, "%s", g_wx_settings.aa && aa_blocked() ? "480 only" : k_aa_names[g_wx_settings.aa]);
         break;
     case ROW_RUMBLE:
         snprintf(v, sizeof v, "%s", g_wx_settings.rumble ? "On" : "Off");
@@ -389,6 +394,7 @@ static void panel_init(void) {
     glyphs(tmp, 0, ROW_CAP, MENU_FONT, "60");
     sReadoutX = sValueX + uvFontStr16Width(tmp) + 12;
     glyphs(sLegend, 0, ROW_CAP, MENU_FONT, "* After a restart");
+    glyphs(sAANote, 0, ROW_CAP, MENU_FONT, "Anti-aliasing: 480 only");
 
     menuUtilSetColors(MENU_COLOR_ITEM, 0xFF, 0xFF, 0xFF);
     menuUtilSetColors(MENU_COLOR_SELECTED, 0xFF, 0xFF, 0x00);
@@ -540,6 +546,14 @@ static s32 panel_update(void) {
 static void panel_draw_legend(void) {
     uvFontSet(MENU_FONT);
     uvFontScale(1.0f, 1.0f);
+    {   /* on the Anti-aliasing row while the resolution rules it out: why */
+        s32 cur = menuUtilGetCurItem();
+        if (cur >= 0 && cur < sPanelCount && sPanelRowKind[cur] == ROW_AA && g_wx_settings.aa && aa_blocked()) {
+            uvFontColor(0xFF, 0xFF, 0x00, 0xFF);
+            uvFontPrintStr16(sPanelTextX, sPanelY - 2 * (uvFontHeight() + 1), sAANote, 100, 0xFFE);
+            return;
+        }
+    }
     if (restart_pending()) uvFontColor(0xFF, 0xFF, 0x00, 0xFF);
     else uvFontColor(0xFF, 0xFF, 0xFF, 0xFF);
     uvFontPrintStr16(sPanelTextX, sPanelY - 2 * (uvFontHeight() + 1), sLegend, 100, 0xFFE);

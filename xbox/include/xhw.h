@@ -175,6 +175,7 @@ void xhw_audio_set_rate(uint32_t rate);       /* osAiSetFrequency */
 uint32_t xhw_audio_space(void);               /* frames that fit the ring now */
 void xhw_audio_write(const int16_t* stereo, uint32_t frames);   /* drops what does not fit */
 void xhw_audio_stop(void);
+uint32_t xhw_audio_skipped(void);             /* samples the latency cap skipped (stereo, both channels) */
 
 void xhw_quit_to_dashboard(void) __attribute__((noreturn));
 void xhw_reboot_self(void) __attribute__((noreturn));

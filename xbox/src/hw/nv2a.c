@@ -44,6 +44,9 @@ void ocx_pb_layout(unsigned* out);  /* tools/xbox/patch_pbkit.py */
 #ifndef XGFX_OVERLAP
 #define XGFX_OVERLAP 1        /* the wait for the GPU is at the next frame's first use, not in the present */
 #endif
+#ifndef XGFX_POLY_SLOPE
+#define XGFX_POLY_SLOPE 1.0f   /* polygon offset slope factor for biased (decal, tie-break) draws; 0: bias only */
+#endif
 #ifndef XGFX_FLIP_REPAIR
 #define XGFX_FLIP_REPAIR 1    /* 0: a flip pbkit lost leaves the screen on an older buffer until the 1 s cap */
 #endif
@@ -57,7 +60,13 @@ void ocx_pb_layout(unsigned* out);  /* tools/xbox/patch_pbkit.py */
 #define XGFX_VB_CACHE_BREAK 1 /* BREAK_VERTEX_BUFFER_CACHE at each batch start */
 #endif
 #ifndef XGFX_TILE
-#define XGFX_TILE 4           /* tile region 0: pbkit's base | 3 (Melee-X: +11 % at one enable bit) */
+/* bit 4: tile region 0 as pbkit's base | 3 (Melee-X: +11 % at one enable bit);
+ * bit 8: no Z compression on the depth buffer (Melee-X's XGX_TILE 8). The
+ * default turns compression off: the stencil shadow volumes (pass 1 marks
+ * the stencil) showed as solid dark columns on the console and not in xemu,
+ * which models no compression (console run 1, 2026-10-15; the A/B is
+ * XGFX_TILE=4). */
+#define XGFX_TILE 12
 #endif
 #ifndef XGFX_Z24_16BPP
 #define XGFX_Z24_16BPP 1      /* Z24S8 with 16-bit colour (720p/1080i); 0: Z16 */
@@ -1048,7 +1057,10 @@ static void emit_fixed(const XgfxState* st) {
         union { float f; uint32_t u; } bias;
         bias.f = -(float)st->depth_bias;   /* toward the eye */
         if (s_fx[F_POLY_BIAS] != bias.u) {
-            putf(NV097_SET_POLYGON_OFFSET_SCALE_FACTOR, 0.0f);
+            /* a slope term too: a constant bias in Z24 steps is next to
+             * nothing where a decal is seen edge-on (the runway's lines
+             * blinked through on the console, not in xemu; run 1) */
+            putf(NV097_SET_POLYGON_OFFSET_SCALE_FACTOR, -XGFX_POLY_SLOPE);
             put1(NV097_SET_POLYGON_OFFSET_BIAS, bias.u);
             s_fx[F_POLY_BIAS] = bias.u;
         }
@@ -1252,11 +1264,15 @@ static int s_tile = XGFX_TILE;
 
 static void tiles_setup(void) {
     int fb_ok = VIDEOREG(NV_PFB_TILE + 8) == pb_back_buffer_pitch();
-    if (fb_ok && (s_tile & 6)) {
-        uint32_t t0 = (VIDEOREG(NV_PFB_TILE) & ~3u) | (s_tile & 4 ? 3u : 1u), old;
+    int z_ok = VIDEOREG(NV_PFB_TILE + 16 + 8) == zeta_pitch();
+    if (s_tile) {
+        uint32_t t0 = VIDEOREG(NV_PFB_TILE), z1 = VIDEOREG(NV_PFB_ZCOMP + 4), old;
+        if (fb_ok && (s_tile & 6)) t0 = (t0 & ~3u) | (s_tile & 4 ? 3u : 1u);
+        if (z_ok && (s_tile & 8)) z1 = 0;
         wait_idle();
         old = pb_wait_until_tiles_not_busy();
         if (t0 != VIDEOREG(NV_PFB_TILE)) tile_write(NV_PFB_TILE, NV_PGRAPH_TILE_XBOX, 0x10, t0);
+        if (z1 != VIDEOREG(NV_PFB_ZCOMP + 4)) tile_write(NV_PFB_ZCOMP + 4, NV_PGRAPH_ZCOMP_XBOX + 4, 0x90 + 4, z1);
         VIDEOREG(NV_PFIFO_CACHE1_DMA_PUSH) = old;
     }
     if (VIDEOREG(NV_PFB_TILE) & 1) {
@@ -1265,8 +1281,9 @@ static void tiles_setup(void) {
         s_fb_ap_base = base;
         s_fb_ap_end = end;
     }
-    xhw_logf("[NV2A] tiles: XGFX_TILE %d%s, tile 0 %08x, CPU framebuffer access %s", XGFX_TILE,
-             fb_ok ? "" : " (fb pitch differs: untouched)", (unsigned)VIDEOREG(NV_PFB_TILE),
+    xhw_logf("[NV2A] tiles: XGFX_TILE %d%s%s, tile 0 %08x, tile 1 %08x zcomp %08x, CPU framebuffer access %s",
+             XGFX_TILE, fb_ok ? "" : " (fb pitch differs: untouched)", z_ok ? "" : " (depth pitch differs: untouched)",
+             (unsigned)VIDEOREG(NV_PFB_TILE), (unsigned)VIDEOREG(NV_PFB_TILE + 16), (unsigned)VIDEOREG(NV_PFB_ZCOMP + 4),
              s_fb_ap ? "through the aperture" : "direct");
 }
 

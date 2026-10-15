@@ -71,10 +71,11 @@ void wx_audio_task(void* task) {
     if (!s_stats_t0) s_stats_t0 = t0;
     if (t0 - s_stats_t0 >= STATS_US) {
         const asp_hle_stats_t* st = asp_hle_stats();
-        xhw_logf("[AUDIO] %u tasks (%u us each), %u buffers, %u frames in, %u dropped (ring full), peak %u, "
-                 "%u AI underruns, %u bad addresses, %u unknown commands",
+        xhw_logf("[AUDIO] %u tasks (%u us each), %u buffers, %u frames in, %u dropped (ring full), %u skipped "
+                 "(latency cap), peak %u, %u AI underruns, %u bad addresses, %u unknown commands",
                  s_tasks, (unsigned)(s_task_us / (s_tasks_iv ? s_tasks_iv : 1)), s_buffers, (unsigned)s_frames_in,
-                 (unsigned)s_frames_dropped, s_peak, (unsigned)wx_ai_underruns(), (unsigned)st->bad_addr,
+                 (unsigned)s_frames_dropped, (unsigned)(xhw_audio_skipped() / 2u), s_peak, (unsigned)wx_ai_underruns(),
+                 (unsigned)st->bad_addr,
                  (unsigned)st->cmds[16]);
         s_task_us = 0;
         s_tasks_iv = 0;

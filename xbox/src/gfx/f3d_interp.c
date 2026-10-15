@@ -1258,8 +1258,10 @@ static void hold_frame(void) {
     int i;
     if (s_hold_req != s_hold_on) {
         s_hold_on = s_hold_req;
+        uint64_t t0 = xhw_time_us();
         if (s_hold_tex) xgfx_tex_destroy(s_hold_tex);
         s_hold_tex = s_hold_on ? xgfx_capture_last(&s_hold_u, &s_hold_v) : 0;
+        if (XHW_TEST_BUILD && s_hold_on) xhw_logf("[GFX] hold: last frame captured in %u ms", (unsigned)((xhw_time_us() - t0) / 1000u));
         if (s_hold_on && !s_hold_tex) xhw_log("[GFX] hold: the last frame could not be captured (pool full)");
     }
     if (!s_hold_tex) return;

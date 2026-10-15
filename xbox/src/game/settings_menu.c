@@ -26,7 +26,7 @@
  *  - leaving fades out with func_8032D51C(0) like the Option screen, and the
  *    title comes back without the intro (game.c's GAME_STATE_OPTIONS path).
  *
- * Rows (PLAN.md 3.4, what the port has today): Video output (restart: `*`),
+ * Rows (PLAN.md 3.4, what the port has today): Resolution, the video output (restart: `*`),
  * FPS counter, Screenshots (test builds), Stick dead zone with the raw
  * stick's tilt next to it, Save and restart, Return. Widescreen and Buttons
  * come with their features (M7 widescreen, remapping). settings.ini is
@@ -272,7 +272,7 @@ static u32 sHeldSince, sHeldLast;
 static const char* row_label(s32 kind) {
     switch (kind) {
     case ROW_VIDEO:
-        return "Video output *";
+        return "Resolution *";
     case ROW_FPS:
         return "FPS counter";
     case ROW_SHOTS:

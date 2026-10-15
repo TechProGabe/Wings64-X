@@ -1,8 +1,18 @@
 /* xhw_audio.c - the game's AI output (22050 Hz s16 stereo, from the RSP
  * audio HLE: xbox/src/game/audio.c) -> AC97 (hardware) or an MCPX APU voice
- * (xemu). Melee-X's xhw_audio.c as is but for this comment, the default rate
- * and xhw_audio_set_rate; its drivers come from OpenCrossing-Xbox
- * xbox_audio.c.
+ * (xemu). Melee-X's xhw_audio.c as is but for this comment, the default rate,
+ * xhw_audio_set_rate, the pump's priority and the latency cap (both below);
+ * its drivers come from OpenCrossing-Xbox xbox_audio.c.
+ *
+ * DIVERGES from Melee-X: the pump runs at kernel level 14, above every game
+ * thread (the libultra shim's run at 8..13; Melee-X's single game thread let
+ * THREAD_PRIORITY_HIGHEST, level 10, be enough). At 10 a level load starved
+ * it, the AC97 ran dry while the game kept writing, and the ring stayed full
+ * from then on: everything heard ~0.7 s late (console run 1, 2026-10-15).
+ * The pump also caps what the ring holds (XHW_AUDIO_MAX_MS): above it the
+ * oldest samples are skipped down to XHW_AUDIO_TARGET_MS, so latency can
+ * never build up whatever stalls. Kill switches -DXHW_AUDIO_PUMP_LEVEL=0
+ * (Melee-X's priority) and -DXHW_AUDIO_MAX_MS=0 (no cap).
  *
  * audio.c writes each AI buffer into a lock-free SPSC ring with
  * xhw_audio_write(). A high-priority pump thread resamples it to the AC97's
@@ -60,10 +70,31 @@ void xhw_audio_write(const int16_t* stereo, uint32_t frames) {
     ASET(s_wp, wp + n);
 }
 
+#ifndef XHW_AUDIO_PUMP_LEVEL
+#define XHW_AUDIO_PUMP_LEVEL 14
+#endif
+#ifndef XHW_AUDIO_MAX_MS
+#define XHW_AUDIO_MAX_MS 120
+#endif
+#ifndef XHW_AUDIO_TARGET_MS
+#define XHW_AUDIO_TARGET_MS 50
+#endif
+static volatile uint32_t s_skipped;   /* samples skipped by the latency cap */
+
+uint32_t xhw_audio_skipped(void) { return AGET(s_skipped); }
+
 static void fill_48k(int16_t* out) {
     const uint32_t step = (uint32_t)(((uint64_t)AGET(s_in_rate) << 16) / 48000);
     uint32_t wp = AGET(s_wp), rp = AGET(s_rp);
     int i;
+    if (XHW_AUDIO_MAX_MS) {   /* the latency cap (see the top comment) */
+        uint32_t rate2 = AGET(s_in_rate) * 2u, level = wp - rp;
+        if (level > rate2 * XHW_AUDIO_MAX_MS / 1000u) {
+            uint32_t keep = (rate2 * XHW_AUDIO_TARGET_MS / 1000u) & ~1u;
+            s_skipped += level - keep;
+            rp = wp - keep;
+        }
+    }
     for (i = 0; i < OUT_FRAMES; i++) {
         if ((int32_t)(wp - (rp + 4)) < 0) {
             out[2 * i] = out[2 * i + 1] = 0;   /* underrun: silence */
@@ -595,7 +626,8 @@ int xhw_audio_init(uint32_t rate) {
     s_apu = XHW_AUDIO_APU && xemu && apu_init();
     s_aci_on = 0;
     ASET(s_pump_run, 1);
-    xhw_thread_start(pump, NULL, 2, 16 * 1024);   /* AC97: the pump starts the engine */
+    if (!XHW_AUDIO_PUMP_LEVEL || !xhw_thread_spawn(pump, NULL, XHW_AUDIO_PUMP_LEVEL, 16 * 1024))
+        xhw_thread_start(pump, NULL, 2, 16 * 1024);   /* AC97: the pump starts the engine */
     s_started = 1;
     xhw_logf("[AUDIO] %s, %u Hz in -> 48 kHz (AC97 global status %08x)", s_apu ? "xemu APU voice" : "AC97 polled",
              s_in_rate, (unsigned)((volatile uint32_t*)ACI)[0x130 >> 2]);

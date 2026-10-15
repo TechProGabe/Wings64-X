@@ -23,8 +23,8 @@
 
 static volatile uint32_t s_us[XHW_PERF_N];
 static volatile uint32_t s_count[XHW_PERF_N];
-static uint32_t s_frames;
-static uint64_t s_t0;
+static uint32_t s_frames, s_worst_us;
+static uint64_t s_t0, s_last;
 
 void xhw_perf_add(int bucket, uint64_t us) {
     if (bucket < 0 || bucket >= XHW_PERF_N) return;
@@ -47,6 +47,8 @@ void xhw_perf_frame(void) {
     int b;
     if (!XHW_PERF) return;
     if (!s_t0) s_t0 = now;
+    if (s_last && now - s_last > s_worst_us) s_worst_us = (uint32_t)(now - s_last);   /* the longest frame: hitches */
+    s_last = now;
     s_frames++;
     wall = now - s_t0;
     if (wall < XHW_PERF_SECS * 1000000ull) return;
@@ -55,9 +57,9 @@ void xhw_perf_frame(void) {
     frame10 = (unsigned)(wall / ((uint64_t)s_frames * 100u));
     used = us[XHW_PERF_DL] + us[XHW_PERF_PRESENT] + us[XHW_PERF_AUDIO];
     rest10 = used / 100u / s_frames < frame10 ? frame10 - (unsigned)(used / 100u / s_frames) : 0;
-    xhw_logf("[PERF] %u.%u fps, %u.%u ms a frame: display lists %u.%u (textures %u.%u), present %u.%u "
+    xhw_logf("[PERF] %u.%u fps, %u.%u ms a frame (longest %u ms): display lists %u.%u (textures %u.%u), present %u.%u "
              "(GPU and flip waits %u.%u), audio %u.%u (%u tasks a second), the rest %u.%u (game logic, idle)",
-             fps10 / 10, fps10 % 10, frame10 / 10, frame10 % 10, per_frame(us[XHW_PERF_DL], s_frames) / 10,
+             fps10 / 10, fps10 % 10, frame10 / 10, frame10 % 10, (unsigned)(s_worst_us / 1000u), per_frame(us[XHW_PERF_DL], s_frames) / 10,
              per_frame(us[XHW_PERF_DL], s_frames) % 10, per_frame(us[XHW_PERF_TEX], s_frames) / 10,
              per_frame(us[XHW_PERF_TEX], s_frames) % 10, per_frame(us[XHW_PERF_PRESENT], s_frames) / 10,
              per_frame(us[XHW_PERF_PRESENT], s_frames) % 10, per_frame(us[XHW_PERF_WAIT], s_frames) / 10,
@@ -65,5 +67,6 @@ void xhw_perf_frame(void) {
              per_frame(us[XHW_PERF_AUDIO], s_frames) % 10,
              (unsigned)((uint64_t)n[XHW_PERF_AUDIO] * 1000000ull / wall), rest10 / 10, rest10 % 10);
     s_frames = 0;
+    s_worst_us = 0;
     s_t0 = now;
 }

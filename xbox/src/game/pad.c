@@ -57,19 +57,32 @@ static volatile int s_started;         /* the game has read the controllers once
 static int s_back_now;                 /* BACK on port 1 (no trigger held) at the latest read */
 static unsigned s_back_presses, s_back_seen;
 
-/* L + R + BACK + BLACK / WHITE (PLAN.md D8): any port, any game state */
+/* L + R + BACK + BLACK / WHITE (PLAN.md D8): any port, any game state.
+ * combos() only records the request; act() carries it out once the reader
+ * has left the controllers (s_busy released), after the 200 ms the title's
+ * "Exit to dashboard" also waits. Quitting from inside the read, with the
+ * four buttons still down, left the console on a black screen instead of
+ * the dashboard (console run 1, 2026-10-15). */
+static volatile long s_combo;   /* 1 dashboard, 2 restart; set once */
+
 static void combos(int port, const xhw_pad* p) {
     if (!(p->buttons & XHW_BTN_BACK) || p->lt <= COMBO_TRIG || p->rt <= COMBO_TRIG) return;
-    if (p->buttons & XHW_BTN_BLACK) {
+    if ((p->buttons & XHW_BTN_BLACK) && __sync_bool_compare_and_swap(&s_combo, 0, 1)) {
         xhw_logf("[PAD] port %d: L + R + BACK + BLACK: to the dashboard", port + 1);
         xhw_exit_reason("quit by the controller (L+R+BACK+BLACK)");
-        xhw_quit_to_dashboard();
-    }
-    if (p->buttons & XHW_BTN_WHITE) {
+    } else if ((p->buttons & XHW_BTN_WHITE) && __sync_bool_compare_and_swap(&s_combo, 0, 2)) {
         xhw_logf("[PAD] port %d: L + R + BACK + WHITE: restart", port + 1);
         xhw_exit_reason("restart by the controller (L+R+BACK+WHITE)");
-        xhw_reboot_self();
     }
+}
+
+static void act(void) {
+    static volatile long s_acting;
+    long c = s_combo;
+    if (!c || !__sync_bool_compare_and_swap(&s_acting, 0, 1)) return;
+    xhw_sleep_ms(200);
+    if (c == 1) xhw_quit_to_dashboard();
+    xhw_reboot_self();
 }
 
 /* VI thread, every retrace (os_shim.c) */
@@ -86,6 +99,7 @@ void wx_pad_retrace(void) {
             }
         }
         __sync_lock_release(&s_busy);
+        act();
     }
 }
 
@@ -165,4 +179,5 @@ void wx_pad_read(void* out) {
     s_read_at = s_retraces;
     s_started = 1;
     __sync_lock_release(&s_busy);
+    act();
 }

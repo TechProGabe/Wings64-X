@@ -208,8 +208,12 @@ int main(void) {
 /* Until the audio driver exists (M6) there is nothing to stop. */
 __attribute__((weak)) void xhw_audio_shutdown(void) {}
 
+/* nv2a.c: the GPU at rest and pbkit shut down while interrupts still run */
+__attribute__((weak)) void xgfx_shutdown(void) {}
+
 void xhw_quit_to_dashboard(void) {
     xhw_exit_write(s_exit_why[0] ? s_exit_why : "quit to the dashboard");
+    xgfx_shutdown();
     xhw_audio_shutdown();
     xhw_pad_shutdown();
     XLaunchXBE(NULL);
@@ -224,6 +228,7 @@ void xhw_quit_to_dashboard(void) {
  * no folder in it, and then the console reboots. */
 static void __attribute__((noreturn)) launch(char* path) {
     xhw_exit_write(s_exit_why[0] ? s_exit_why : "relaunch");
+    xgfx_shutdown();
     xhw_audio_shutdown();
     xhw_pad_shutdown();
     XLaunchXBE(path);

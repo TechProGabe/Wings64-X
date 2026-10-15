@@ -264,7 +264,7 @@ enum { PAGE_TOP, PAGE_VIDEO, PAGE_CONTROLS, PAGE_SYSTEM, PAGE_COUNT };
 
 static const s32 k_page_top[]      = { ROW_PAGE_VIDEO, ROW_PAGE_CONTROLS, ROW_PAGE_SYSTEM, ROW_RETURN };
 /* "Apply and restart" sits under the rows it applies (the `*` ones);
-   System (screenshots) exists in test builds only */
+   System holds Screenshots (every build: maintainer, console run 8) */
 static const s32 k_page_video[]    = { ROW_VIDEO, ROW_AA, ROW_FILTER, ROW_FPS, ROW_RESTART, ROW_RETURN };
 static const s32 k_page_controls[] = { ROW_DEADZONE, ROW_RUMBLE, ROW_RETURN };
 static const s32 k_page_system[]   = { ROW_SHOTS, ROW_RETURN };
@@ -405,7 +405,6 @@ static void panel_open_page(s32 page, s32 cursor) {
     sPanelCount = 0;
     for (i = 0; i < k_pages[page].count; i++) {
         s32 kind = k_pages[page].rows[i];
-        if ((kind == ROW_SHOTS || kind == ROW_PAGE_SYSTEM) && !XHW_TEST_BUILD) continue;   /* PLAN.md 3.4: test builds only */
         sPanelRowKind[sPanelCount++] = kind;
     }
     sReturnText = textGetDataByIdx(TEXT_QUIT);
@@ -450,7 +449,7 @@ static void panel_init(void) {
     glyphs(sRestartIdle, 0, ROW_CAP, MENU_FONT, "Nothing to apply yet");
     glyphs(sHint[ROW_PAGE_VIDEO], 0, ROW_CAP, MENU_FONT, "Picture and display");
     glyphs(sHint[ROW_PAGE_CONTROLS], 0, ROW_CAP, MENU_FONT, "Stick and rumble");
-    glyphs(sHint[ROW_PAGE_SYSTEM], 0, ROW_CAP, MENU_FONT, "Test-build tools");
+    glyphs(sHint[ROW_PAGE_SYSTEM], 0, ROW_CAP, MENU_FONT, "Screenshots");
     glyphs(sHint[ROW_VIDEO], 0, ROW_CAP, MENU_FONT, "HD needs an HD cable");
     glyphs(sHint[ROW_AA], 0, ROW_CAP, MENU_FONT, "Smoother edges, 480 only");
     glyphs(sHint[ROW_FPS], 0, ROW_CAP, MENU_FONT, "Frame rate, top left");

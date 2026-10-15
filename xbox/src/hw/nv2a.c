@@ -340,6 +340,9 @@ static int gpu_quiet(void) {
 
 static int gpu_busy(void) { return !gpu_quiet() || !gpu_quiet(); }
 
+/* xgfx_shutdown: no GPU work is issued any more (the XBE is being left) */
+static volatile int s_shut;
+
 static void wait_idle(void) {
     uint64_t t0 = 0, w0 = xhw_time_us();
     int reported = 0;
@@ -477,6 +480,7 @@ void xgfx_set_tex_filter(int mode) {
 }
 
 uint32_t xgfx_tex_create(uint32_t w, uint32_t h, const uint32_t* argb) {
+    if (s_shut) return 0;
     static uint32_t s_gen;
     uint32_t bytes = w * h * 4;
     void* mem;
@@ -675,6 +679,7 @@ static uint32_t* push_screen_target(uint32_t* p) {
 }
 
 void xgfx_frame_begin(void) {
+    if (s_shut) return;
     uint32_t* p;
     if (s_frame_open) return;
     if (XGFX_OVERLAP) {   /* the last frame may still be drawing */
@@ -707,6 +712,7 @@ static void pb_budget(void) {
 }
 
 void xgfx_clear(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t argb, int color, int depth, float z01) {
+    if (s_shut) return;
     uint32_t z24;
     if (z01 < 0.0f) z01 = 0.0f;
     if (z01 > 1.0f) z01 = 1.0f;
@@ -859,6 +865,7 @@ static void aa_resolve(void) {
 
 void xgfx_present(void) {
     int shot;
+    if (s_shut) return;
     xgfx_frame_begin();
     pb_budget();
     if (s_aa_color) aa_resolve();
@@ -1124,8 +1131,12 @@ static void emit_fixed(const XgfxState* st) {
     if (st->depth_func != XGFX_DEPTH_OFF)
         SETF(F_DEPTH_FUNC, NV097_SET_DEPTH_FUNC,
              st->depth_func == XGFX_DEPTH_LESS ? 0x201 : st->depth_func == XGFX_DEPTH_ALWAYS ? 0x207 : 0x203);
-    SETF(F_DEPTH_MASK, NV097_SET_DEPTH_MASK, st->depth_write ? 1 : 0);
-    if (st->stencil == XGFX_STENCIL_MARK && s_mark_mode == 1) {
+    /* debug.txt shadow_mark = 2: the mark pass writes depth too (the
+     * console may gate the whole Z24S8 word's writes, stencil included, on
+     * the depth mask: with shadow_debug = 1 its marks never showed there) */
+    SETF(F_DEPTH_MASK, NV097_SET_DEPTH_MASK,
+         st->depth_write || (st->stencil == XGFX_STENCIL_MARK && s_mark_mode == 2) ? 1 : 0);
+    if (st->stencil == XGFX_STENCIL_MARK && s_mark_mode >= 1) {
         /* the mark pass with colour writes on, blended (0, 1) so the colour
          * stays: a draw that writes nothing at all may be skipped before the
          * stencil stage on the console (the volumes showed as solid columns
@@ -1145,7 +1156,7 @@ static void emit_fixed(const XgfxState* st) {
         SETF(F_ALPHA_REF, NV097_SET_ALPHA_REF, st->alpha_ref);
     }
     SETF(F_COLOR_MASK, NV097_SET_COLOR_MASK,
-         st->color_write || (st->stencil == XGFX_STENCIL_MARK && s_mark_mode == 1)
+         st->color_write || (st->stencil == XGFX_STENCIL_MARK && s_mark_mode >= 1)
                          ? NV097_SET_COLOR_MASK_RED_WRITE_ENABLE | NV097_SET_COLOR_MASK_GREEN_WRITE_ENABLE |
                                NV097_SET_COLOR_MASK_BLUE_WRITE_ENABLE | NV097_SET_COLOR_MASK_ALPHA_WRITE_ENABLE
                          : 0);
@@ -1251,6 +1262,7 @@ static void setup_state(void) {
 #define VTX_WINDOW 0x8000u
 
 void xgfx_draw(const XgfxState* st, const XgfxVtx* v, uint32_t ntris) {
+    if (s_shut) return;
     uint32_t count = ntris * 3, bytes = count * (uint32_t)sizeof(XgfxVtx), first, idx, win;
     uint8_t* dst;
     if (!ntris) return;
@@ -1546,4 +1558,27 @@ int xgfx_init(void) {
              pb_DepthFmt == NV097_SET_SURFACE_FORMAT_ZETA_Z16 ? "Z16" : "Z24S8");
     xhw_mem_log("after nv2a");
     return 1;
+}
+
+/* Before the XBE is left (xhw_quit_to_dashboard, a relaunch): the GPU is
+ * brought to rest while interrupts still run, then pbkit is shut down here.
+ * Left to the kernel's shutdown notification, pbkit's pb_kill waited for a
+ * GPU that sat on a frame's flip interrupt nobody could acknowledge any
+ * more: leaving from flight hung the console, power button included, while
+ * leaving from a quiet menu worked (console runs 1-8). */
+void xgfx_shutdown(void) {
+    uint64_t t0;
+    if (s_shut) return;
+    s_shut = 1;                  /* every entry point returns from now on */
+    xhw_sleep_ms(60);            /* a frame the scheduler thread is inside of finishes */
+    t0 = xhw_time_us();
+    pb_close();
+    while (gpu_busy() && xhw_time_us() - t0 < 1000000) {
+        nv2a_irq_recover();
+        xhw_sleep_ms(1);
+    }
+    xhw_sleep_ms(40);            /* the last flip's vblank */
+    xhw_logf("[NV2A] shutdown: GPU %s after %u ms", gpu_busy() ? "still busy" : "idle",
+             (unsigned)((xhw_time_us() - t0) / 1000u));
+    pb_kill();
 }

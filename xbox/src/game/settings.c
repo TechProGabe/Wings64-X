@@ -47,7 +47,7 @@ static void defaults(WxSettings* s) {
     s->progressive = 1;
     s->widescreen = 2;
     s->fps = XHW_FPS_DEFAULT;
-    s->screenshots = XHW_TEST_BUILD;
+    s->screenshots = 0;   /* BACK screenshots: a Port settings row in every build, off by default (maintainer) */
     s->stick_deadzone = 20;
     s->tex_filter = 0;
     s->aa = 0;

@@ -72,3 +72,7 @@ void wx_boot(const uint8_t* rom, uint32_t size) {
  * settings panel draws through the game's own font inside its display list
  * (patches/021), so nothing is needed here yet. */
 void wx_frame_overlay(void) {}
+
+/* Display-list addresses are host pointers (os_convert.h is the identity on
+ * the Xbox; f3d_interp.c resolves segments first). */
+void* wx_addr(uint32_t a) { return (void*)(uintptr_t)a; }

@@ -263,9 +263,11 @@ enum { ROW_VIDEO, ROW_FPS, ROW_SHOTS, ROW_DEADZONE, ROW_RESTART, ROW_RETURN, ROW
 enum { PAGE_TOP, PAGE_VIDEO, PAGE_CONTROLS, PAGE_SYSTEM, PAGE_COUNT };
 
 static const s32 k_page_top[]      = { ROW_PAGE_VIDEO, ROW_PAGE_CONTROLS, ROW_PAGE_SYSTEM, ROW_RETURN };
-static const s32 k_page_video[]    = { ROW_VIDEO, ROW_AA, ROW_FILTER, ROW_FPS, ROW_RETURN };
+/* "Apply and restart" sits under the rows it applies (the `*` ones);
+   System (screenshots) exists in test builds only */
+static const s32 k_page_video[]    = { ROW_VIDEO, ROW_AA, ROW_FILTER, ROW_FPS, ROW_RESTART, ROW_RETURN };
 static const s32 k_page_controls[] = { ROW_DEADZONE, ROW_RUMBLE, ROW_RETURN };
-static const s32 k_page_system[]   = { ROW_SHOTS, ROW_RESTART, ROW_RETURN };
+static const s32 k_page_system[]   = { ROW_SHOTS, ROW_RETURN };
 
 static const struct { const s32* rows; s32 count; } k_pages[PAGE_COUNT] = {
     { k_page_top,      ARRAY_COUNT(k_page_top) },
@@ -274,7 +276,7 @@ static const struct { const s32* rows; s32 count; } k_pages[PAGE_COUNT] = {
     { k_page_system,   ARRAY_COUNT(k_page_system) },
 };
 
-static const char* const k_filter_names[] = { "N64", "Smooth", "Sharp" };
+static const char* const k_filter_names[] = { "N64", "Sharp" };   /* Smooth dropped (maintainer, console run 6) */
 static const char* const k_aa_names[] = { "Off", "On" };   /* 2x supersampling (4x cost too much fill on the console) */
 
 /* optionsInitMain: menuCreateItems(80, ...); the panel starts further left
@@ -290,8 +292,12 @@ static s32 sPanelRowKind[MAX_ROWS];
 static s32 sPanelCount;
 static s16 sRowText[MAX_ROWS][ROW_CAP];
 static s16 sLegend[ROW_CAP];
-static s16 sAANote[ROW_CAP];   /* the hint under the rows when supersampling can't apply */
-static s16 sFilterNote[3][ROW_CAP];   /* what each texture filter does, under the rows on that row */
+/* the hint under the rows for the row under the cursor (font 6, one line) */
+#define ROW_KINDS (ROW_PAGE_SYSTEM + 1)
+static s16 sHint[ROW_KINDS][ROW_CAP];
+static s16 sAANote[ROW_CAP];          /* supersampling set but the resolution rules it out */
+static s16 sFilterNote[2][ROW_CAP];   /* the texture filter's hint follows its value */
+static s16 sRestartIdle[ROW_CAP];     /* Apply and restart with nothing to apply */
 static s16* sReturnText;
 static s32 sStickHeld;
 static u8 sDirty;
@@ -325,7 +331,7 @@ static const char* row_label(s32 kind) {
     case ROW_DEADZONE:
         return "Stick dead zone";
     case ROW_RESTART:
-        return "Save and restart";
+        return "Apply and restart";
     default:
         return "";
     }
@@ -353,7 +359,7 @@ static void panel_set_row(s32 idx) {
         out_text(v, g_wx_settings.output);
         break;
     case ROW_FILTER:
-        snprintf(v, sizeof v, "%s", k_filter_names[g_wx_settings.tex_filter]);
+        snprintf(v, sizeof v, "%s", k_filter_names[g_wx_settings.tex_filter ? 1 : 0]);
         break;
     case ROW_AA:
         /* supersampling needs the 640x480 32-bit frame (xgfx_set_aa): at
@@ -399,7 +405,7 @@ static void panel_open_page(s32 page, s32 cursor) {
     sPanelCount = 0;
     for (i = 0; i < k_pages[page].count; i++) {
         s32 kind = k_pages[page].rows[i];
-        if (kind == ROW_SHOTS && !XHW_TEST_BUILD) continue;   /* PLAN.md 3.4: test builds only */
+        if ((kind == ROW_SHOTS || kind == ROW_PAGE_SYSTEM) && !XHW_TEST_BUILD) continue;   /* PLAN.md 3.4: test builds only */
         sPanelRowKind[sPanelCount++] = kind;
     }
     sReturnText = textGetDataByIdx(TEXT_QUIT);
@@ -440,8 +446,18 @@ static void panel_init(void) {
     glyphs(sLegend, 0, ROW_CAP, MENU_FONT, "* After a restart");
     glyphs(sAANote, 0, ROW_CAP, MENU_FONT, "Supersampling: 480 only");
     glyphs(sFilterNote[0], 0, ROW_CAP, MENU_FONT, "The game's own look");
-    glyphs(sFilterNote[1], 0, ROW_CAP, MENU_FONT, "Softer, less shimmer");
-    glyphs(sFilterNote[2], 0, ROW_CAP, MENU_FONT, "Crisp square pixels");
+    glyphs(sFilterNote[1], 0, ROW_CAP, MENU_FONT, "Crisp square pixels");
+    glyphs(sRestartIdle, 0, ROW_CAP, MENU_FONT, "Nothing to apply yet");
+    glyphs(sHint[ROW_PAGE_VIDEO], 0, ROW_CAP, MENU_FONT, "Picture and display");
+    glyphs(sHint[ROW_PAGE_CONTROLS], 0, ROW_CAP, MENU_FONT, "Stick and rumble");
+    glyphs(sHint[ROW_PAGE_SYSTEM], 0, ROW_CAP, MENU_FONT, "Test-build tools");
+    glyphs(sHint[ROW_VIDEO], 0, ROW_CAP, MENU_FONT, "HD needs an HD cable");
+    glyphs(sHint[ROW_AA], 0, ROW_CAP, MENU_FONT, "Smoother edges, 480 only");
+    glyphs(sHint[ROW_FPS], 0, ROW_CAP, MENU_FONT, "Frame rate, top left");
+    glyphs(sHint[ROW_RESTART], 0, ROW_CAP, MENU_FONT, "Restarts to apply *");
+    glyphs(sHint[ROW_DEADZONE], 0, ROW_CAP, MENU_FONT, "Ignores small stick drift");
+    glyphs(sHint[ROW_RUMBLE], 0, ROW_CAP, MENU_FONT, "Shakes when you crash");
+    glyphs(sHint[ROW_SHOTS], 0, ROW_CAP, MENU_FONT, "BACK saves a picture");
     panel_open_page(PAGE_TOP, 0);
     sDirty = 0;
 }
@@ -455,8 +471,8 @@ static void panel_change(s32 idx, s32 dir) {
         g_wx_settings.progressive = g_wx_settings.output != XHW_OUT_480I;   /* 480i is the one interlaced pick */
         break;
     case ROW_FILTER:
-        g_wx_settings.tex_filter = (g_wx_settings.tex_filter + dir + 3) % 3;
-        xgfx_set_tex_filter(g_wx_settings.tex_filter);
+        g_wx_settings.tex_filter = !g_wx_settings.tex_filter;
+        xgfx_set_tex_filter(g_wx_settings.tex_filter ? 2 : 0);   /* the back end's 0 N64, 2 sharp */
         break;
     case ROW_AA:
         g_wx_settings.aa = !g_wx_settings.aa;
@@ -504,7 +520,7 @@ static void panel_save(void) {
     if (!sDirty) return;
     xhw_logf("[SETTINGS] output %s, anti-aliasing %s, texture filter %s, rumble %d, fps %d, screenshots %d, "
              "stick dead zone %d%%",
-             k_out_names[g_wx_settings.output], k_aa_names[g_wx_settings.aa ? 1 : 0], k_filter_names[g_wx_settings.tex_filter],
+             k_out_names[g_wx_settings.output], k_aa_names[g_wx_settings.aa ? 1 : 0], k_filter_names[g_wx_settings.tex_filter ? 1 : 0],
              g_wx_settings.rumble, g_wx_settings.fps, g_wx_settings.screenshots, g_wx_settings.stick_deadzone);
     wx_settings_save();
     sDirty = 0;
@@ -543,11 +559,11 @@ static s32 panel_update(void) {
             func_8032D51C(0);
             return 0;
         case ROW_RESTART:
-            sndPlaySfx(SFX_UI_CONFIRM);
-            if (!restart_pending()) {   /* nothing waits for a restart: as Return */
-                func_8032D51C(0);
-                return 0;
+            if (!restart_pending()) {   /* nothing waits for a restart: stay (the hint says so) */
+                sndPlaySfx(SFX_OPTION_FLIP);
+                return -1;
             }
+            sndPlaySfx(SFX_UI_CONFIRM);
             sDirty = 1;
             panel_save();
             xhw_logf("[SETTINGS] save and restart: output %s", k_out_names[g_wx_settings.output]);
@@ -596,29 +612,33 @@ static s32 panel_update(void) {
     return -1;
 }
 
-/* under the rows: what the `*` means */
+/* under the rows: the hint for the row under the cursor (why supersampling
+   is off at 720p/1080i, what the texture filter picked does, ...), else on
+   the Video page what the `*` means */
 static void panel_draw_legend(void) {
+    s32 cur = menuUtilGetCurItem(), kind = cur >= 0 && cur < sPanelCount ? sPanelRowKind[cur] : -1;
+    s16* line = NULL;
+    int warn = 0;
     uvFontSet(MENU_FONT);
     uvFontScale(1.0f, 1.0f);
-    {   /* hints for the row under the cursor: why supersampling is off at
-           720p/1080i, what the texture filter picked does */
-        s32 cur = menuUtilGetCurItem();
-        if (cur >= 0 && cur < sPanelCount && sPanelRowKind[cur] == ROW_AA && g_wx_settings.aa && aa_blocked()) {
-            uvFontColor(0xFF, 0xFF, 0x00, 0xFF);
-            uvFontPrintStr16(sPanelTextX, sPanelY - 2 * (uvFontHeight() + 1), sAANote, 100, 0xFFE);
-            return;
-        }
-        if (cur >= 0 && cur < sPanelCount && sPanelRowKind[cur] == ROW_FILTER) {
-            uvFontColor(0xFF, 0xFF, 0xFF, 0xFF);
-            uvFontPrintStr16(sPanelTextX, sPanelY - 2 * (uvFontHeight() + 1), sFilterNote[g_wx_settings.tex_filter], 100,
-                             0xFFE);
-            return;
-        }
+    if (kind == ROW_AA && g_wx_settings.aa && aa_blocked()) {
+        line = sAANote;
+        warn = 1;
+    } else if (kind == ROW_FILTER) {
+        line = sFilterNote[g_wx_settings.tex_filter ? 1 : 0];
+    } else if (kind == ROW_RESTART) {
+        line = restart_pending() ? sHint[ROW_RESTART] : sRestartIdle;
+        warn = restart_pending();
+    } else if (kind >= 0 && kind < ROW_KINDS && sHint[kind][0]) {
+        line = sHint[kind];
+    } else if (sPage == PAGE_VIDEO) {
+        line = sLegend;
+        warn = restart_pending();
     }
-    if (sPage != PAGE_VIDEO) return;   /* the `*` rows are on the Video page */
-    if (restart_pending()) uvFontColor(0xFF, 0xFF, 0x00, 0xFF);
+    if (!line) return;
+    if (warn) uvFontColor(0xFF, 0xFF, 0x00, 0xFF);
     else uvFontColor(0xFF, 0xFF, 0xFF, 0xFF);
-    uvFontPrintStr16(sPanelTextX, sPanelY - 2 * (uvFontHeight() + 1), sLegend, 100, 0xFFE);
+    uvFontPrintStr16(sPanelTextX, sPanelY - 2 * (uvFontHeight() + 1), line, 100, 0xFFE);
 }
 
 int wings64_settings_screen(void) {

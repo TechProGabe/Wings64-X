@@ -36,7 +36,7 @@ typedef struct {
     int fps;
     int screenshots;
     int stick_deadzone;  /* percent, 0..60 */
-    int tex_filter;      /* 0 N64 (the game's per-texture choice), 1 smooth, 2 sharp */
+    int tex_filter;      /* 0 N64 (the game's per-texture choice), 1 sharp (point sampling) */
     int aa;              /* supersampling: 0 off, 1 on (2x; 480 only; restart) */
     int rumble;          /* 1: the controller rumbles on a crash */
     char video_confirmed[8];

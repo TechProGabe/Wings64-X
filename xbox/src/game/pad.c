@@ -65,12 +65,23 @@ static unsigned s_back_presses, s_back_seen;
  * the dashboard (console run 1, 2026-10-15). */
 static volatile long s_combo;   /* 1 dashboard, 2 restart; set once */
 
+static volatile int s_combo_held;   /* the combo's buttons are still down (any port) */
+static uint32_t s_combo_at;         /* retrace it was recognised at */
+
+/* any of the combos' buttons down on this pad */
+static int combo_buttons(const xhw_pad* p) {
+    return (p->buttons & (XHW_BTN_BACK | XHW_BTN_BLACK | XHW_BTN_WHITE)) || p->lt > 100 || p->rt > 100;
+}
+
 static void combos(int port, const xhw_pad* p) {
     if (!(p->buttons & XHW_BTN_BACK) || p->lt <= COMBO_TRIG || p->rt <= COMBO_TRIG) return;
+    if (s_combo) return;
     if ((p->buttons & XHW_BTN_BLACK) && __sync_bool_compare_and_swap(&s_combo, 0, 1)) {
+        s_combo_at = s_retraces;
         xhw_logf("[PAD] port %d: L + R + BACK + BLACK: to the dashboard", port + 1);
         xhw_exit_reason("quit by the controller (L+R+BACK+BLACK)");
     } else if ((p->buttons & XHW_BTN_WHITE) && __sync_bool_compare_and_swap(&s_combo, 0, 2)) {
+        s_combo_at = s_retraces;
         xhw_logf("[PAD] port %d: L + R + BACK + WHITE: restart", port + 1);
         xhw_exit_reason("restart by the controller (L+R+BACK+WHITE)");
     }
@@ -99,10 +110,16 @@ void wx_pad_quiesce(void) {
     while (!__sync_bool_compare_and_swap(&s_busy, 0, 1)) xhw_yield();
 }
 
+/* The combos act once their buttons are let go (or after 3 s): leaving with
+ * L, R, BACK and BLACK still down hung the console on the way to the
+ * dashboard, power button included (console runs 1-6), while the title's
+ * and Option's "Exit to dashboard" (no button held) worked. */
 static void act(void) {
     static volatile long s_acting;
     long c = s_combo;
-    if (!c || !__sync_bool_compare_and_swap(&s_acting, 0, 1)) return;
+    if (!c) return;
+    if (s_combo_held && s_retraces - s_combo_at < 180) return;
+    if (!__sync_bool_compare_and_swap(&s_acting, 0, 1)) return;
     xhw_sleep_ms(200);
     wx_pad_quiesce();
     if (c == 1) xhw_quit_to_dashboard();
@@ -116,11 +133,16 @@ void wx_pad_retrace(void) {
         __sync_bool_compare_and_swap(&s_busy, 0, 1)) {
         int i;
         if (s_retraces - s_read_at >= COMBO_WATCH) {   /* the game did not read meanwhile */
+            int held = 0;
             xhw_pad_poll();
             for (i = 0; i < MAXCONTROLLERS; i++) {
                 xhw_pad p;
-                if (xhw_pad_get(i, &p)) combos(i, &p);
+                if (xhw_pad_get(i, &p)) {
+                    combos(i, &p);
+                    held |= combo_buttons(&p);
+                }
             }
+            s_combo_held = held;
         }
         __sync_lock_release(&s_busy);
         act();
@@ -162,7 +184,7 @@ static void stick(const xhw_pad* p, s8* sx, s8* sy, int port) {
 
 void wx_pad_read(void* out) {
     OSContPad* pads = (OSContPad*)out;
-    int i, back;
+    int i, back, held = 0;
     while (!__sync_bool_compare_and_swap(&s_busy, 0, 1)) xhw_yield();   /* the VI thread is looking */
     xhw_pad_poll();
     if (s_rumble_strength) {
@@ -179,6 +201,7 @@ void wx_pad_read(void* out) {
             continue;
         }
         if (!WX_PAD_COMBO_VI_ONLY) combos(i, &p);
+        held |= combo_buttons(&p);
         if (i == 0 && (p.buttons & XHW_BTN_BACK) && p.lt < TRIG_ON && p.rt < TRIG_ON) back = 1;
         if (p.buttons & XHW_BTN_A) b |= A_BUTTON;
         if (p.buttons & XHW_BTN_X) b |= B_BUTTON;
@@ -204,6 +227,7 @@ void wx_pad_read(void* out) {
     }
     if (back && !s_back_now) s_back_presses++;
     s_back_now = back;
+    s_combo_held = held;
     s_read_at = s_retraces;
     s_started = 1;
     __sync_lock_release(&s_busy);

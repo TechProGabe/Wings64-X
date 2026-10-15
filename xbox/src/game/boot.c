@@ -58,7 +58,7 @@ void wx_boot(const uint8_t* rom, uint32_t size) {
     xgfx_set_aa(g_wx_settings.aa ? 2 : 1);
 #endif
     xgfx_init();
-    xgfx_set_tex_filter(g_wx_settings.tex_filter);
+    xgfx_set_tex_filter(g_wx_settings.tex_filter ? 2 : 0);
     wx_settings_apply_fps();
     xhw_pad_set_shots(g_wx_settings.screenshots);
     wings64_rdram_init();

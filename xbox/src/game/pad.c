@@ -14,9 +14,22 @@
  *   Z / R        left / right trigger
  *   Start, D-pad Start, D-pad
  *   L            none (remappable later, M7)
+ *   BACK         on the title: the Settings panel (patches/034)
  *
  * L + R + BACK + BLACK on any port quits to the dashboard (Melee-X);
- * L + R + BACK + WHITE restarts the game (relaunches this XBE). */
+ * L + R + BACK + WHITE restarts the game (relaunches this XBE). Both fire as
+ * soon as the four are down together (both triggers past 200 of 255, as
+ * Melee-X's), are logged and go to lastexit.txt (xhw_exit_reason). They are
+ * checked at every controller read the game makes and, so that they work in
+ * every game state (a level load, a stalled game thread, a screen that reads
+ * no controller), also from the VI thread whenever the game has not read the
+ * controllers for COMBO_WATCH retraces (half a second). A busy flag keeps the
+ * two threads out of SDL at the same time: the game's read waits (yielding)
+ * for the VI thread's short look; the VI thread skips its look while the game
+ * is reading, so it never blocks, not even on a game thread stuck in a read.
+ * Kill switch -DWX_PAD_COMBO_WATCH=0: the combos only at the game's reads.
+ * Test switch -DWX_PAD_COMBO_VI_ONLY=1: the combos only from the VI thread,
+ * which then looks every 8 retraces (checks that path in xemu). */
 #include <ultra64.h>
 #include <math.h>
 #include <string.h>
@@ -26,12 +39,65 @@
 
 #define TRIG_ON 128
 #define CSTICK_ON 16384   /* half tilt */
+#define COMBO_TRIG 200    /* both triggers past this for the combos (Melee-X) */
+
+#ifndef WX_PAD_COMBO_WATCH
+#define WX_PAD_COMBO_WATCH 1
+#endif
+#ifndef WX_PAD_COMBO_VI_ONLY
+#define WX_PAD_COMBO_VI_ONLY 0
+#endif
+#define COMBO_WATCH (WX_PAD_COMBO_VI_ONLY ? 0 : 30)   /* retraces without a game read before the VI thread looks */
 
 static int s_raw_pct;
 static volatile uint32_t s_retraces;
+static volatile uint32_t s_read_at;    /* s_retraces at the game's latest read */
+static volatile long s_busy;           /* 1 while a thread is in SDL (xhw_pad_poll/get) */
+static volatile int s_started;         /* the game has read the controllers once (SDL is up) */
+static int s_back_now;                 /* BACK on port 1 (no trigger held) at the latest read */
+static unsigned s_back_presses, s_back_seen;
 
-void wx_pad_retrace(void) { s_retraces++; }
+/* L + R + BACK + BLACK / WHITE (PLAN.md D8): any port, any game state */
+static void combos(int port, const xhw_pad* p) {
+    if (!(p->buttons & XHW_BTN_BACK) || p->lt <= COMBO_TRIG || p->rt <= COMBO_TRIG) return;
+    if (p->buttons & XHW_BTN_BLACK) {
+        xhw_logf("[PAD] port %d: L + R + BACK + BLACK: to the dashboard", port + 1);
+        xhw_exit_reason("quit by the controller (L+R+BACK+BLACK)");
+        xhw_quit_to_dashboard();
+    }
+    if (p->buttons & XHW_BTN_WHITE) {
+        xhw_logf("[PAD] port %d: L + R + BACK + WHITE: restart", port + 1);
+        xhw_exit_reason("restart by the controller (L+R+BACK+WHITE)");
+        xhw_reboot_self();
+    }
+}
+
+/* VI thread, every retrace (os_shim.c) */
+void wx_pad_retrace(void) {
+    uint32_t r = ++s_retraces;
+    if (WX_PAD_COMBO_WATCH && s_started && r - s_read_at >= COMBO_WATCH && (r & 7) == 0 &&
+        __sync_bool_compare_and_swap(&s_busy, 0, 1)) {
+        int i;
+        if (s_retraces - s_read_at >= COMBO_WATCH) {   /* the game did not read meanwhile */
+            xhw_pad_poll();
+            for (i = 0; i < MAXCONTROLLERS; i++) {
+                xhw_pad p;
+                if (xhw_pad_get(i, &p)) combos(i, &p);
+            }
+        }
+        __sync_lock_release(&s_busy);
+    }
+}
+
+uint32_t wx_pad_retraces(void) { return s_retraces; }
 int wx_pad_stick_raw_pct(void) { return s_raw_pct; }
+/* a press not yet seen, with BACK still down (one left over from another
+ * screen is dropped) */
+int wx_pad_back_pressed(void) {
+    int r = s_back_presses != s_back_seen && s_back_now;
+    s_back_seen = s_back_presses;
+    return r;
+}
 
 /* radial dead zone, then the remaining range rescaled onto 0..80. Rounded
  * by hand: nxdk's lrintf is a stub that asserts (it hung the console at the
@@ -58,8 +124,10 @@ static void stick(const xhw_pad* p, s8* sx, s8* sy, int port) {
 
 void wx_pad_read(void* out) {
     OSContPad* pads = (OSContPad*)out;
-    int i;
+    int i, back;
+    while (!__sync_bool_compare_and_swap(&s_busy, 0, 1)) xhw_yield();   /* the VI thread is looking */
     xhw_pad_poll();
+    back = 0;
     for (i = 0; i < MAXCONTROLLERS; i++) {
         xhw_pad p;
         u16 b = 0;
@@ -68,18 +136,8 @@ void wx_pad_read(void* out) {
             pads[i].errno = CONT_NO_RESPONSE_ERROR;
             continue;
         }
-        if ((p.buttons & XHW_BTN_BACK) && p.lt > 200 && p.rt > 200) {
-            if (p.buttons & XHW_BTN_BLACK) {
-                xhw_log("[PAD] L + R + BACK + BLACK: to the dashboard");
-                xhw_exit_reason("quit by the controller (L+R+BACK+BLACK)");
-                xhw_quit_to_dashboard();
-            }
-            if (p.buttons & XHW_BTN_WHITE) {
-                xhw_log("[PAD] L + R + BACK + WHITE: restart");
-                xhw_exit_reason("restart by the controller (L+R+BACK+WHITE)");
-                xhw_reboot_self();
-            }
-        }
+        if (!WX_PAD_COMBO_VI_ONLY) combos(i, &p);
+        if (i == 0 && (p.buttons & XHW_BTN_BACK) && p.lt < TRIG_ON && p.rt < TRIG_ON) back = 1;
         if (p.buttons & XHW_BTN_A) b |= A_BUTTON;
         if (p.buttons & XHW_BTN_X) b |= B_BUTTON;
         if (p.buttons & XHW_BTN_START) b |= START_BUTTON;
@@ -102,4 +160,9 @@ void wx_pad_read(void* out) {
         stick(&p, &pads[i].stick_x, &pads[i].stick_y, i);
         pads[i].errno = 0;
     }
+    if (back && !s_back_now) s_back_presses++;
+    s_back_now = back;
+    s_read_at = s_retraces;
+    s_started = 1;
+    __sync_lock_release(&s_busy);
 }

@@ -44,6 +44,8 @@ changed on import.
 | 027 | `app/code_D2B10.c` | debug camera aimed at the landing pad | `WINGS64_XBOX && WINGS64_DBG_LOOK_AT_PAD > 0` (default off) |
 | 028 | `app/snap.c` | photo album keeps a persistent frame (`DIVERGES`) | `WINGS64_XBOX && WINGS64_FB_PERSIST` (default 1) |
 | 029 | `include/libultra/PR/os_convert.h`, `include/libultra/PR/R4300.h`, `kernel/geometry.c` | **Wings64-X's own**: KSEG0/physical conversions are the identity, `geometry.c:347`'s `+ 0x80000000` dropped (host pointers stay host pointers; "Memory map" below) | `WINGS64_XBOX` |
+| 031 | `app/title_screen.c` | **Wings64-X's own**: fourth title item "Exit to dashboard" (`DIVERGES`; PLAN.md 3.4) | `WINGS64_XBOX && WINGS64_SETTINGS_MENU && WINGS64_TITLE_EXIT` (both default 1) |
+| 034 | `app/title_screen.c` | **Wings64-X's own**: BACK on the title opens the Settings panel (`DIVERGES`; PLAN.md D8) | `WINGS64_XBOX && WINGS64_SETTINGS_MENU` |
 
 Changes made on import, beyond the guard: 022 runs the command list (the
 Dreamcast's AICA played the voices, so its list was a placeholder; the Xbox

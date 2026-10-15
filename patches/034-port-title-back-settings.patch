@@ -1,0 +1,16 @@
+--- a/src/app/title_screen.c
++++ b/src/app/title_screen.c
+@@ -459,6 +459,13 @@
+ #endif
+         menuUtilSetSoundFlags(MENU_SOUND_CHANGE | MENU_SOUND_SELECT);
+         temp_v0 = menuCheckInputs();
++#if defined(WINGS64_XBOX) && WINGS64_SETTINGS_MENU
++        // DIVERGES: BACK (no N64 button) opens the port settings panel, as choosing "Settings" does
++        if (temp_v0 < 0 && wings64_settings_back_pressed()) {
++            sndPlaySfx(SFX_UI_CONFIRM);
++            temp_v0 = 2;
++        }
++#endif
+         if (temp_v0 == -3) {
+             D_80378CE0->unk22C = 16.65f;
+             D_80378CE4 = 0.0f;

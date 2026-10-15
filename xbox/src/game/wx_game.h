@@ -12,6 +12,8 @@ struct OSContPad;
 void wx_pad_read(void* pads);
 void wx_pad_retrace(void);
 int wx_pad_stick_raw_pct(void);   /* the raw left stick's tilt, 0..100 (the settings panel's readout) */
+uint32_t wx_pad_retraces(void);   /* retraces counted by the VI thread (held-direction repeat) */
+int wx_pad_back_pressed(void);    /* BACK newly pressed on port 1, still down, not seen before */
 
 /* eeprom.c: the 16 Kbit EEPROM as E:\UDATA\57580001\pilotwings64.eep */
 void wx_eeprom_load(void);
@@ -37,5 +39,10 @@ typedef struct {
 extern WxSettings g_wx_settings;
 void wx_settings_load(void);
 int wx_settings_save(void);
+/* The FPS counter: the renderer's 5x7 one (nv2a.c, Melee-X's), or with
+ * -DWX_FPS_GAME_FONT=1 wings64-dc's game-font one (settings_menu.c). Called
+ * at boot after xgfx_init and after a change of g_wx_settings.fps. */
+void wx_settings_apply_fps(void);
+int wx_settings_fps_game_font(void);   /* 1: settings_menu.c draws the counter */
 
 #endif

@@ -53,7 +53,7 @@ void wx_boot(const uint8_t* rom, uint32_t size) {
     xhw_video_set_pref(g_wx_settings.output, g_wx_settings.progressive);
     xhw_video_boot();
     xgfx_init();
-    xgfx_set_fps_overlay(g_wx_settings.fps);
+    wx_settings_apply_fps();
     xhw_pad_set_shots(g_wx_settings.screenshots);
     wings64_rdram_init();
     xhw_log("[BOOT] starting the game (bootproc)");

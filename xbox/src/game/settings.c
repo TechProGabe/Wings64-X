@@ -14,13 +14,26 @@
  * BACK held at boot (Melee-X's xsdk_early; the splash says so): this boot
  * runs 480i 4:3 and the file is saved with output = 480i, progressive = 0,
  * widescreen = off. Test builds take "env MX_VIDEO=" over the file
- * (xhw_video.c). The in-game panel (M7) edits the same struct. */
+ * (xhw_video.c). The in-game panel (settings_menu.c) edits the same struct
+ * and saves it here. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "wings64_settings.h"
 #include "wx_game.h"
+#include "xgfx.h"
 #include "xhw.h"
+
+/* The FPS counter ([video] fps, the panel's "FPS counter" row) is the
+ * renderer's (nv2a.c fps_overlay, Melee-X's as is: presented frames over
+ * half a second of the ACPI clock, yellow 5x7 digits at 2x on a black box at
+ * 1/16 of the framebuffer from the top-left corner; maintainer's choice
+ * 2026-10-15). -DWX_FPS_GAME_FONT=1 draws wings64-dc's instead (the game's
+ * HUD font, through patches/021's frame hook; PLAN.md 3.4's first idea). */
+#ifndef WX_FPS_GAME_FONT
+#define WX_FPS_GAME_FONT 0
+#endif
 
 #ifndef XHW_FPS_DEFAULT
 #define XHW_FPS_DEFAULT XHW_TEST_BUILD
@@ -127,8 +140,8 @@ void wx_settings_load(void) {
         if (n > sizeof text - 1) n = sizeof text - 1;
         if (xhw_file_read(f, 0, text, n)) {
             text[n] = '\0';
-            parse(&g_wx_settings, text);
             write = strstr(text, "; end of settings") == NULL;   /* an older or cut file: rewrite it whole */
+            parse(&g_wx_settings, text);   /* after the check: parse cuts the text up in place */
         } else {
             write = 1;
         }
@@ -149,3 +162,10 @@ void wx_settings_load(void) {
              g_wx_settings.screenshots, g_wx_settings.stick_deadzone);
     if (write) wx_settings_save();
 }
+
+void wx_settings_apply_fps(void) {
+    xgfx_set_fps_overlay(g_wx_settings.fps && !(WINGS64_SETTINGS_MENU && WX_FPS_GAME_FONT));
+}
+
+/* settings_menu.c draws its counter only when this says so */
+int wx_settings_fps_game_font(void) { return g_wx_settings.fps && WINGS64_SETTINGS_MENU && WX_FPS_GAME_FONT; }

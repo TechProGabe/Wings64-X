@@ -1,0 +1,16 @@
+diff --git a/src/kernel/texture.c b/src/kernel/texture.c
+index 55a7036..b7ce701 100644
+--- a/src/kernel/texture.c
++++ b/src/kernel/texture.c
+@@ -804,7 +804,11 @@ ParsedUVTX* _uvExpandTexture(u8* src) {
+     for (i = 0; i < gfxCount; i++) {
+         gfxCmd = &dlist[i];
+ 
++#ifdef WINGS64_XBOX
++        temp_v0_2 = gfxCmd->words.w0 >> 24; // PORT: G_SETTIMG opcode; IDO bitfields are MSB-first
++#else
+         temp_v0_2 = gfxCmd->setimg.cmd;
++#endif
+         if (temp_v0_2 == G_SETTIMG) {
+             if (var_a0 == 0) {
+                 gfxCmd->setimg.dram |= (u32)OS_PHYSICAL_TO_K0(temp_t0);

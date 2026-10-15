@@ -1,0 +1,31 @@
+diff --git a/src/kernel/system.c b/src/kernel/system.c
+index aaadf3c..1dc404d 100644
+--- a/src/kernel/system.c
++++ b/src/kernel/system.c
+@@ -37,7 +37,14 @@ OSMesg D_802C3318[1];
+ s32 D_802C331C;
+ OSMesg gPiMgrCmdBuf[8];
+ OSMesgQueue gPiMgrCmdQ;
++#ifdef WINGS64_XBOX
++// PW64: the osContInit stub writes MAXCONTROLLERS (4) entries through this
++// pointer (the ROM layout had UNUSED slack after it; the native linker packs
++// globals, so the extra entries would clobber gSiContPattern).
++OSContStatus gSiContStatus[4];
++#else
+ OSContStatus gSiContStatus;
++#endif
+ UNUSED u8 D_802C3360[0x10];
+ OSContPad gControllerPads[6];
+ u8 gSiContPattern;
+@@ -340,7 +347,11 @@ u8 uvContMesgInit(void) {
+     osRecvMesg(&mq, &dummy, OS_MESG_BLOCK);
+     osCreateMesgQueue(&gSiContQ, gSiContBuf, ARRAY_COUNT(gSiContBuf));
+     osSetEventMesg(OS_EVENT_SI, &gSiContQ, (void*)0x33333333);
++#ifdef WINGS64_XBOX
++    osContInit(&gSiContQ, &gSiContPattern, gSiContStatus); // PW64: now an array
++#else
+     osContInit(&gSiContQ, &gSiContPattern, &gSiContStatus);
++#endif
+     temp = gSiContPattern;
+     return temp;
+ }

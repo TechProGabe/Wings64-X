@@ -1,0 +1,705 @@
+diff --git a/src/app/code_A8C30.c b/src/app/code_A8C30.c
+index 5e476e2..62165a6 100644
+--- a/src/app/code_A8C30.c
++++ b/src/app/code_A8C30.c
+@@ -259,7 +259,14 @@ void func_80321760(void) {
+     if (IS_MAIN_VEHICLE(sp3D4->veh)) {
+         i = (sp3D4->cls * 3) + sp3D4->veh;
+     } else {
++#ifdef WINGS64_XBOX
++        // PW64: a byte table packed into the tail of an s32 array; take the
++        // byte IDO (big-endian) put at that offset, not the host-LE one.
++        i = (sp3D4->cls + sp3D4->veh * 3) + 15;
++        i = (u8)(D_8034F980[i / 4] >> (24 - 8 * (i % 4)));
++#else
+         i = ((u8*)D_8034F980)[(sp3D4->cls + sp3D4->veh * 3) + 15];
++#endif
+         D_8036D8E0 = 12.0f;
+     }
+     if (i > 11) {
+diff --git a/src/app/demo.c b/src/app/demo.c
+index 790acc8..c8b107b 100644
+--- a/src/app/demo.c
++++ b/src/app/demo.c
+@@ -180,13 +180,24 @@ void demoInit(void) {
+         switch (tag) {
+         case 'RPKT': // 0x52504B54
+             _uvMediaCopy(&pkt, data, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(&pkt, 1, RPKT, "4w"); // PW64: BE f32/u32
++#endif
+             sDemoRecording->entries[idx].time = pkt.time;
+             entry = &sDemoRecording->entries[idx];
+             demoPackInputs(entry, pkt.stickX, pkt.stickY, pkt.buttons);
+             idx++;
+             break;
+         case 'RHDR': // 0x52484452
++#ifdef WINGS64_XBOX
++            // PW64: every RHDR block is 24 bytes but RHDR is 20; the N64 overran
++            // into harmless bss, here it overwrote sDemoRecording (attract-demo
++            // crash at retrace ~2400). Copy at most sizeof.
++            _uvMediaCopy(&sDemoRecHeader, data, size < sizeof(sDemoRecHeader) ? size : sizeof(sDemoRecHeader));
++            PW64_SWAP(&sDemoRecHeader, 1, RHDR, "w 4b 3w"); // PW64: BE s32s
++#else
+             _uvMediaCopy(&sDemoRecHeader, data, size);
++#endif
+             break;
+         case 0:
+             if (tag && tag) { } // fakematch
+diff --git a/src/app/demo_attitude.c b/src/app/demo_attitude.c
+index ea25338..e8af61e 100644
+--- a/src/app/demo_attitude.c
++++ b/src/app/demo_attitude.c
+@@ -61,8 +61,14 @@ void demoAttLoadPos(void) {
+         switch (tag) {
+         case 'PHDR': // 0x50484452
+             phdr = (PHDR*)data;
++#ifdef WINGS64_XBOX
++            // PW64: direct BE reads -> uvMemRead (swaps)
++            D_8036D320 = (s32)uvMemRead(&phdr->unk0, 4);
++            D_8036D324 = (s32)uvMemRead(&phdr->unk4, 4);
++#else
+             D_8036D320 = phdr->unk0;
+             D_8036D324 = phdr->unk4;
++#endif
+             D_8034F970 = (Unk8034F970*)_uvMemAllocAlign8(D_8036D324 * sizeof(Unk8034F970));
+             if (D_8034F970 == NULL) {
+                 return;
+@@ -79,6 +85,9 @@ void demoAttLoadPos(void) {
+                 _uvDebugPrintf("Didn't get header yet\n");
+             } else if (idx < D_8036D324) {
+                 _uvMediaCopy(&D_8034F970->unk4[idx], data, size);
++#ifdef WINGS64_XBOX
++                PW64_SWAP(&D_8034F970->unk4[idx], 1, PPOS, "6w"); // PW64: BE f32s
++#endif
+                 idx++;
+             }
+             break;
+diff --git a/src/app/level.c b/src/app/level.c
+index 0fd017c..0f08072 100644
+--- a/src/app/level.c
++++ b/src/app/level.c
+@@ -293,28 +293,53 @@ LevelObjects* levelLoadMapObjects(u8 mapIdx) {
+             for (i = 0; i < temp->countESND; i++) {
+                 _uvMediaCopy(&esnd, srcPtr, sizeof(esnd));
+                 srcPtr += sizeof(esnd);
++#ifdef WINGS64_XBOX
++                // PW64: BE f32s
++                PW64_SWAP(&esnd, 1, LevelESND, "22w 4b 5w 4b w");
++#endif
+                 envSoundLoad(&esnd);
+             }
+             break;
+         case 'WOBJ': // 0x574F424A
+             _uvMediaCopy(temp->dataWOBJ, srcPtr, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(temp->dataWOBJ, size / sizeof(LevelWOBJ), LevelWOBJ, "3w 4b"); // PW64
++#endif
+             break;
+         case 'LPAD': // 0x4C504144
+             _uvMediaCopy(temp->dataLPAD, srcPtr, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(temp->dataLPAD, size / sizeof(LevelLPAD), LevelLPAD, "5w 4b"); // PW64
++#endif
+             break;
+         case 'TOYS': // 0x544F5953
+             _uvMediaCopy(temp->dataTOYS, srcPtr, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(temp->dataTOYS, size / sizeof(LevelTOYS), LevelTOYS, "3w 4b"); // PW64
++#endif
+             break;
+         case 'TPTS': // 0x54505453
+             _uvMediaCopy(temp->dataTPTS, srcPtr, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(temp->dataTPTS, size / sizeof(LevelTPTS), LevelTPTS, "4b 12w"); // PW64
++#endif
+             break;
+         case 'APTS': // 0x41505453
+             _uvMediaCopy(temp->dataAPTS, srcPtr, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(temp->dataAPTS, size / sizeof(LevelAPTS), LevelAPTS, "8w"); // PW64
++#endif
+             break;
+         case 'BNUS': // 0x424E5553
+             _uvMediaCopy(temp->dataBNUS, srcPtr, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(temp->dataBNUS, size / sizeof(LevelBNUS), LevelBNUS, "7w"); // PW64
++#endif
+             break;
+         case 'LEVL': // 0x4C45564C
++#ifdef WINGS64_XBOX
++            // PW64: LevelLEVL is all u8 counts, no swap needed
++#endif
+             ptr = (LevelLEVL*)srcPtr;
+             temp->countESND = ptr->countESND;
+             if (temp->countESND >= 255) {
+diff --git a/src/app/spath.c b/src/app/spath.c
+index 776c1a0..57dddf9 100644
+--- a/src/app/spath.c
++++ b/src/app/spath.c
+@@ -71,21 +71,46 @@ s32 spathLoadFile(s32 userFile) {
+         switch (tag) {
+         case 'SCPX':
+             _uvMediaCopy(&spath->scpx, src, size);
++#ifdef WINGS64_XBOX
++            // PW64: BE {u32 count, f32[2] v[]}; block holds only the used prefix
++            PW64_SWAP(&spath->scpx, 1, u32, "w");
++            PW64_SWAP(spath->scpx.v, (size - 4) / 8, PathTimeVal, "2w");
++#endif
+             break;
+         case 'SCPY':
+             _uvMediaCopy(&spath->scpy, src, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(&spath->scpy, 1, u32, "w"); // PW64
++            PW64_SWAP(spath->scpy.v, (size - 4) / 8, PathTimeVal, "2w");
++#endif
+             break;
+         case 'SCPZ':
+             _uvMediaCopy(&spath->scpz, src, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(&spath->scpz, 1, u32, "w"); // PW64
++            PW64_SWAP(spath->scpz.v, (size - 4) / 8, PathTimeVal, "2w");
++#endif
+             break;
+         case 'SCPH':
+             _uvMediaCopy(&spath->scph, src, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(&spath->scph, 1, u32, "w"); // PW64
++            PW64_SWAP(spath->scph.v, (size - 4) / 8, PathTimeVal, "2w");
++#endif
+             break;
+         case 'SCPP':
+             _uvMediaCopy(&spath->scpp, src, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(&spath->scpp, 1, u32, "w"); // PW64
++            PW64_SWAP(spath->scpp.v, (size - 4) / 8, PathTimeVal, "2w");
++#endif
+             break;
+         case 'SCPR':
+             _uvMediaCopy(&spath->scpr, src, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(&spath->scpr, 1, u32, "w"); // PW64
++            PW64_SWAP(spath->scpr.v, (size - 4) / 8, PathTimeVal, "2w");
++#endif
+             break;
+         }
+     }
+diff --git a/src/app/task.c b/src/app/task.c
+index e774ff2..857edc4 100644
+--- a/src/app/task.c
++++ b/src/app/task.c
+@@ -612,6 +612,17 @@ TaskObjects* taskLoadCommObj(u32 taskIdx) {
+             break;
+         case 'COMM': // 0x434F4D4D
+             _uvMediaCopy(&dst->comm, data, sizeof(dst->comm));
++#ifdef WINGS64_XBOX
++            // PW64: swap the BE multi-byte fields of comm (counts are u8)
++            PW64_SWAP(&dst->comm.unk10, 1, TaskObjects_Unk10, "7w");
++            PW64_SWAP(&dst->comm.unk2C, 1, TaskObjUnk2C, "6w");
++            PW64_SWAP(&dst->comm.unk44, 1, f32, "w");
++            PW64_SWAP(&dst->comm.unk48.unk0, 11, Unk803599D0, "21w"); // 5 named + 6 in pad1A4 (snap.c reads [5..10])
++            PW64_SWAP16(dst->comm.unk48.unk39C, 4);
++            PW64_SWAP(dst->comm.unk48.unk3A4, 4, f32, "w");
++            PW64_SWAP(&dst->comm.unk48.unk3B4, 2, s32, "w");
++            PW64_SWAP(&dst->comm.unk48.unk3BC, 4, f32, "w");
++#endif
+             mem_init();
+             dst->dataTPAD = mem_get(dst->comm.countTPAD * sizeof(TaskTPAD));
+             dst->dataLPAD = mem_get(dst->comm.countLPAD * sizeof(TaskLPAD));
+@@ -632,51 +643,100 @@ TaskObjects* taskLoadCommObj(u32 taskIdx) {
+             break;
+         case 'THER': // 0x54484552
+             _uvMediaCopy(dst->dataTHER, data, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(dst->dataTHER, size / sizeof(TaskTHER), TaskTHER, "10w"); // PW64
++#endif
+             break;
+         case 'LWIN': // 0x4C57494E
+             _uvMediaCopy(dst->dataLWIN, data, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(dst->dataLWIN, size / sizeof(TaskLWIN), TaskLWIN, "20w 4b"); // PW64
++#endif
+             break;
+         case 'TPAD': // 0x54504144
+             _uvMediaCopy(dst->dataTPAD, data, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(dst->dataTPAD, size / sizeof(TaskTPAD), TaskTPAD, "6w 4b 3w 4b w"); // PW64
++#endif
+             break;
+         case 'LPAD': // 0x4C504144
+             _uvMediaCopy(dst->dataLPAD, data, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(dst->dataLPAD, size / sizeof(TaskLPAD), TaskLPAD, "6w 4b 3w 4b 4b"); // PW64
++#endif
+             break;
+         case 'LSTP': // 0x4C535450
+             _uvMediaCopy(dst->dataLSTP, data, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(dst->dataLSTP, size / sizeof(TaskLSTP), TaskLSTP, "6w 4b 4b w"); // PW64
++#endif
+             break;
+         case 'RNGS': // 0x524E4753
+             _uvMediaCopy(dst->dataRNGS, data, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(dst->dataRNGS, size / sizeof(TaskRNGS), TaskRNGS,
++                      "7w 4b 5w 4b 5w 4b w 4b 2w 4b 3w 4b 16b"); // PW64
++#endif
+             break;
+         case 'BALS': // 0x42414C53
+             _uvMediaCopy(dst->dataBALS, data, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(dst->dataBALS, size / sizeof(TaskBALS), TaskBALS, "3w 12b 2w 4b 8w 4b 8w"); // PW64
++#endif
+             break;
+         case 'PHTS': // 0x50485453
+             _uvMediaCopy(dst->dataPHTS, data, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(dst->dataPHTS, size / sizeof(TaskPHTS), TaskPHTS, "5w"); // PW64
++#endif
+             break;
+         case 'HOPD': // 0x484F5044
+             _uvMediaCopy(dst->dataHOPD, data, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(dst->dataHOPD, size / sizeof(TaskHOPD), TaskHOPD, "7w 4b"); // PW64
++#endif
+             break;
+         case 'TARG': // 0x54415247
+             _uvMediaCopy(dst->dataTARG, data, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(dst->dataTARG, size / sizeof(TaskTARG), TaskTARG, "6w 4b w"); // PW64
++#endif
+             break;
+         case 'HPAD': // 0x48504144
+             _uvMediaCopy(dst->dataHPAD, data, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(dst->dataHPAD, size / sizeof(TaskHPAD), TaskHPAD, "6w w 4b w 4b 5w 4b"); // PW64
++#endif
+             break;
+         case 'BTGT': // 0x42544754
+             _uvMediaCopy(dst->dataBTGT, data, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(dst->dataBTGT, size / sizeof(TaskBTGT), TaskBTGT, "3w 3w 2b 2b"); // PW64
++#endif
+             break;
+         case 'FALC': // 0x46414C43
+             _uvMediaCopy(dst->dataFALC, data, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(dst->dataFALC, size / sizeof(TaskFALC), TaskFALC, "4w 8b 37w"); // PW64
++#endif
+             break;
+         case 'CNTG': // 0x434E5447
+             _uvMediaCopy(dst->dataCNTG, data, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(dst->dataCNTG, size / sizeof(TaskCNTG), TaskCNTG, "6w 4b"); // PW64
++#endif
+             break;
+         case 'SDFM': // 0x5344464D
++#ifdef WINGS64_XBOX
++            // PW64: TaskSDFM is a byte pad, no swap needed
++#endif
+             _uvMediaCopy(dst->dataSDFM, data, size);
+             break;
+         case 'OBSV': // 0x4F425356
+             _uvMediaCopy(dst->dataOBSV, data, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP(dst->dataOBSV, size / sizeof(TaskOBSV), TaskOBSV, "4w"); // PW64
++#endif
+             break;
+         }
+     }
+diff --git a/src/app/text_data.c b/src/app/text_data.c
+index 94e4eea..2e502b6 100644
+--- a/src/app/text_data.c
++++ b/src/app/text_data.c
+@@ -43,6 +43,9 @@ void textLoadBlock(s32 userFileIdx) {
+         case 'DATA': // 0x44415441
+             sTextData[sTextDataCount] = _uvMemAllocAlign8(size + 2);
+             _uvMediaCopy(sTextData[sTextDataCount], data, size);
++#ifdef WINGS64_XBOX
++            PW64_SWAP16(sTextData[sTextDataCount], size / 2); // PW64: BE s16 table
++#endif
+ 
+ #if defined(VERSION_JP)
+             var_v1 = (size / 2) - 5;
+diff --git a/src/app/user_paths.c b/src/app/user_paths.c
+index 1737f9e..1a57425 100644
+--- a/src/app/user_paths.c
++++ b/src/app/user_paths.c
+@@ -61,6 +61,11 @@ Unk8037DCA0* userPath_8034A4F8(s32 userFileIdx) {
+         switch (var_v0) {
+         case 'COMM':
+             temp1 = sp88;
++#ifdef WINGS64_XBOX
++            // PW64: whole records read off the raw BE block; swap in place
++            // (5 s32, s16 unk14, 2 pad = 0x18 bytes; mirrors anim.c).
++            PW64_SWAP(temp1, 1, UnkCommStruct, "5w h 2b");
++#endif
+             var_s3 = temp1->unk0;
+             temp_v1 = temp1->unk4;
+             temp_s0->unk22 = temp1->unkC;
+@@ -71,6 +76,14 @@ Unk8037DCA0* userPath_8034A4F8(s32 userFileIdx) {
+             break;
+         case 'QUAT':
+             temp2 = sp88;
++#ifdef WINGS64_XBOX
++            // PW64: swap the BE {count, unk4} header, then every 0x18-byte
++            // entry {Vec4F, s32, pad} as 6 words. Without this the swapped
++            // count is huge, _uvMemAllocAlign8 fails and unkC stays NULL
++            // (release crashed writing unkC[0] through the NULL).
++            pw64_swap(temp2, 1, 8, "2w");
++            pw64_swap((u8*)temp2 + 8, temp2->count, sizeof(UnkQuatStruct_Unk8), "6w");
++#endif
+             temp_s0->unk8 = temp2->count;
+             temp_s0->unk4 = temp2->unk4;
+             temp_s0->unk0 = 0;
+@@ -91,6 +104,12 @@ Unk8037DCA0* userPath_8034A4F8(s32 userFileIdx) {
+             break;
+         case 'XLAT':
+             temp3 = sp88;
++#ifdef WINGS64_XBOX
++            // PW64: swap the BE {count, unk4} header, then every 0x10-byte
++            // entry {Vec3F, s32} as 4 words (same class as QUAT above).
++            pw64_swap(temp3, 1, 8, "2w");
++            pw64_swap((u8*)temp3 + 8, temp3->count, sizeof(UnkTranslatStruct_Unk8), "4w");
++#endif
+             temp_s0->unk18 = temp3->count;
+             temp_s0->unk14 = temp3->unk4;
+             temp_s0->unk10 = 0;
+diff --git a/src/kernel/anim.c b/src/kernel/anim.c
+index fcc9c80..79d1b2a 100644
+--- a/src/kernel/anim.c
++++ b/src/kernel/anim.c
+@@ -30,6 +30,11 @@ void* uvJanimLoad(s32 arg0) {
+         switch (var_v0) {
+         case 'COMM':
+             temp1 = sp74;
++#ifdef WINGS64_XBOX
++            // PW64: the record is read whole off the raw BE block; swap it in
++            // place (5 s32, s16 unk14, 2 pad = 0x18 bytes on both sides).
++            PW64_SWAP(temp1, 1, UnkCommStruct, "5w h 2b");
++#endif
+             var_s3 = _uvMemAlloc(sizeof(ParsedUVAN), 4);
+             var_s3->modelId = temp1->modelId;
+             var_s3->unk6 = 0;
+@@ -51,6 +56,13 @@ void* uvJanimLoad(s32 arg0) {
+             break;
+         case 'PART':
+             temp2 = sp74;
++#ifdef WINGS64_XBOX
++            // PW64: swap the BE {count, unk4} header, then every 0x14-byte
++            // key {Vec4F, s16 frame, u16 MSB-first bitfield}. `sizeof(
++            // UnkPartStruct_Unk8)` is 0x14 on both sides (header patched).
++            pw64_swap(temp2, 1, 8, "2w");
++            pw64_swap((u8*)temp2 + 8, temp2->count, sizeof(UnkPartStruct_Unk8), "4w 2h");
++#endif
+             temp_v0_3 = _uvMemAlloc(sizeof(ParsedUVAN_Unk0), 4);
+             if (var_s4 != NULL) {
+                 var_s4->unk0 = temp_v0_3;
+diff --git a/src/kernel/audio_seq.c b/src/kernel/audio_seq.c
+index f83e97d..006dc04 100644
+--- a/src/kernel/audio_seq.c
++++ b/src/kernel/audio_seq.c
+@@ -25,6 +25,11 @@ void uvaSeqNew(s32 arg0) {
+         uvaSeqStop();
+     }
+     _uvMediaCopy(gSequenceData, gSeqFile->seqArray[arg0].offset, seq_align);
++#ifdef WINGS64_XBOX
++    // PW64: the compact-seq header (u32 trackOffset[16], division) is read as
++    // words by cseq.c; the track data after it is a byte stream.
++    PW64_SWAP(gSequenceData, 1, ALCMidiHdr, "17w");
++#endif
+     alCSeqNew(&D_80261230, gSequenceData);
+     alSeqpSetBank(gSeqPlayer, gWaveTableBank);
+     alSeqpSetSeq(gSeqPlayer, (ALSeq*)&D_80261230);
+diff --git a/src/kernel/memory.c b/src/kernel/memory.c
+index 442fcc0..68117bc 100644
+--- a/src/kernel/memory.c
++++ b/src/kernel/memory.c
+@@ -358,6 +358,10 @@ void uvLevelInit(void) {
+         switch (tag) {
+         case 'COMM':
+             _uvMediaCopy(&gUVBlockCounts, source, length);
++#ifdef WINGS64_XBOX
++            // PW64: BE f32 + 16 u16.
++            PW64_SWAP(&gUVBlockCounts, 1, UVBlockCounts, "w 16h");
++#endif
+             gLevelData.unk1608 = gUVBlockCounts.unk0;
+             break;
+         default:
+diff --git a/src/kernel/texture.c b/src/kernel/texture.c
+index b7ce701..963db1d 100644
+--- a/src/kernel/texture.c
++++ b/src/kernel/texture.c
+@@ -9,6 +9,9 @@
+ #include <uv_sprite.h>
+ #include <uv_texture.h>
+ #include <segment_symbols.h>
++#ifdef WINGS64_XBOX
++#include <libc/stddef.h> // PW64: offsetof for the ROM-layout copies
++#endif
+ 
+ typedef struct {
+     u16 count;
+@@ -74,6 +77,10 @@ void uvMemInitBlockHdr(void) {
+ 
+     while ((tag = uvFileReadBlock(sp64, &sp5C, &src, 1)) != 0) {
+         if (tag == 'TABL') {
++#ifdef WINGS64_XBOX
++            // PW64: BE {tag, size} pairs, in scratch RAM (read mode 1).
++            PW64_SWAP(src, sp5C / sizeof(UVBlockHeader), UVBlockHeader, "2w");
++#endif
+             for (var_a1 = 0, var_a0 = (UVBlockHeader*)src; var_a1 < sp5C; var_a1 += 8, var_a0++) {
+                 switch (var_a0->tag) {
+                 case 0:
+@@ -410,7 +417,16 @@ ParsedUVEN* _uvParseUVEN(u8* src) {
+     }
+ 
+     uven = (ParsedUVEN*)_uvMemAlloc(sizeof(ParsedUVEN), 4);
++#ifdef WINGS64_XBOX
++    // PW64: the ROM record is the N64 ParsedUVEN (0x3C bytes, 4-byte pointer
++    // slots at 0x30..). Copy only the data prefix (identical layout on the
++    // host), swap its two floats; the pointer/count slots are set below.
++    uvConsumeBytes(uven, &src, offsetof(ParsedUVEN, modelTable));
++    src += 0x3C - offsetof(ParsedUVEN, modelTable);
++    PW64_SWAP32(&uven->fogMin, 2);
++#else
+     uvConsumeBytes(uven, &src, sizeof(ParsedUVEN));
++#endif
+     uven->modelCount = modelCount;
+     uven->callback = 0;
+     uven->modelTable = (uven->modelCount) ? modelTable : NULL;
+@@ -478,6 +494,9 @@ ParsedUVMD* _uvParseUVMD(u8* src) {
+     uvConsumeBytes(&sp6E, &src, sizeof(sp6E));
+     vtxTable = (Vtx*)_uvMemAlloc(vtxCount * sizeof(Vtx), 8);
+     _uvMediaCopy(vtxTable, src, vtxCount * sizeof(Vtx));
++#ifdef WINGS64_XBOX
++    PW64_SWAP(vtxTable, vtxCount, Vtx, "6h 4b"); // PW64: BE Vtx
++#endif
+     src += vtxCount * sizeof(Vtx);
+     lodRadius = (f32*)_uvMemAlloc(lodCount * sizeof(f32), 4);
+     lodTable = (uvModelLOD*)_uvMemAlloc(lodCount * sizeof(uvModelLOD), 4);
+@@ -526,11 +545,23 @@ ParsedUVMD* _uvParseUVMD(u8* src) {
+ 
+     mtxTable = (Mtx4F*)_uvMemAlloc(mtxCount * sizeof(Mtx4F), 4);
+     uvConsumeBytes(mtxTable, &src, mtxCount * sizeof(Mtx4F));
++#ifdef WINGS64_XBOX
++    PW64_SWAP(mtxTable, mtxCount, Mtx4F, "16w"); // PW64: BE f32[16]
++#endif
+     if (sp7A) {
+         var_s6 = (UnkUVMD_24*)_uvMemAlloc(sp7A * sizeof(UnkUVMD_24), 4);
+ 
+         for (i = 0; i < sp7A; i++) {
++#ifdef WINGS64_XBOX
++            // PW64: ROM records are the N64 layout (0x24 bytes, a 4-byte
++            // pointer slot unk20 at 0x20, set below). Copy the data prefix and
++            // swap it: u8 x3 + pad, f32 x6, u16 unk1C + pad.
++            uvConsumeBytes(&var_s6[i], &src, offsetof(UnkUVMD_24, unk20));
++            src += 0x24 - offsetof(UnkUVMD_24, unk20);
++            pw64_swap(&var_s6[i], 1, offsetof(UnkUVMD_24, unk20), "4b 6w h 2b");
++#else
+             uvConsumeBytes(&var_s6[i], &src, sizeof(var_s6[i]));
++#endif
+         }
+     } else {
+         var_s6 = NULL;
+@@ -632,10 +663,16 @@ ParsedUVCT* _uvParseUVCT(u8* src) {
+ 
+     vtxTable = (Vtx*)_uvMemAlloc(vtxCount * sizeof(Vtx), 8);
+     _uvMediaCopy(vtxTable, src, vtxCount * sizeof(Vtx));
++#ifdef WINGS64_XBOX
++    PW64_SWAP(vtxTable, vtxCount, Vtx, "6h 4b"); // PW64: BE Vtx
++#endif
+     src += vtxCount * sizeof(Vtx);
+ 
+     spA4 = (void*)_uvMemAlloc(sp8A * sizeof(Unk80225FBC_0x28_UnkC), 4);
+     _uvMediaCopy((void*)spA4, src, sp8A * sizeof(Unk80225FBC_0x28_UnkC));
++#ifdef WINGS64_XBOX
++    PW64_SWAP(spA4, sp8A, Unk80225FBC_0x28_UnkC, "4h"); // PW64: BE u16[4]
++#endif
+     src += sp8A * sizeof(Gfx);
+ 
+     sp98 = (UnkSobjDraw*)_uvMemAlloc(sp86 * sizeof(UnkSobjDraw), 4);
+@@ -644,6 +681,11 @@ ParsedUVCT* _uvParseUVCT(u8* src) {
+         uvConsumeBytes(&sp7B, &src, sizeof(sp7B));
+         tempSp98->unk4 = (void*)_uvMemAlloc(sp7B * sizeof(Mtx), 4);
+         uvConsumeBytes(tempSp98->unk4, &src, sp7B * sizeof(Mtx));
++#ifdef WINGS64_XBOX
++        // PW64: the C accesses Mtx as u16 i[4][4], f[4][4] (Mtx_u,
++        // uv_matrix.h), so swap per u16: host Mtx = 32 host-order u16s.
++        PW64_SWAP(tempSp98->unk4, sp7B, Mtx, "32h");
++#endif
+ 
+         uvConsumeBytes(&tempSp98->modelId, &src, sizeof(tempSp98->modelId));
+         uvConsumeBytes(&tempSp98->unk8, &src, sizeof(tempSp98->unk8));
+@@ -760,6 +802,9 @@ ParsedUVTX* _uvExpandTexture(u8* src) {
+     dlist = (Gfx*)_uvMemAlloc(gfxCount * sizeof(Gfx), 8);
+ 
+     uvConsumeBytes(dlist, &src, gfxCount * sizeof(Gfx));
++#ifdef WINGS64_XBOX
++    PW64_SWAP(dlist, gfxCount, Gfx, "2w"); // PW64: BE Gfx words
++#endif
+ 
+     temp_v0 = (ParsedUVTX*)_uvMemAlloc(sizeof(ParsedUVTX), 4);
+     uvConsumeBytes(&temp_v0->width, &src, sizeof(temp_v0->width));
+@@ -857,6 +902,9 @@ ParsedUVLV* _uvExpandTextureCpy(u8* src) {
+         _uvDebugPrintf("bump up NLV_E\n");
+     }
+     _uvMediaCopy(level->terraIds, src, level->terraCount * sizeof(u16));
++#ifdef WINGS64_XBOX
++    PW64_SWAP16(level->terraIds, level->terraCount); // PW64: BE u16 ids (same below)
++#endif
+     src += level->terraCount * sizeof(u16);
+ 
+     uvConsumeBytes(&level->lightCount, &src, sizeof(level->lightCount));
+@@ -867,6 +915,9 @@ ParsedUVLV* _uvExpandTextureCpy(u8* src) {
+         _uvDebugPrintf("bump up NLV_E\n");
+     }
+     _uvMediaCopy(level->lightIds, src, level->lightCount * sizeof(u16));
++#ifdef WINGS64_XBOX
++    PW64_SWAP16(level->lightIds, level->lightCount);
++#endif
+     src += level->lightCount * sizeof(u16);
+ 
+     uvConsumeBytes(&level->environmentCount, &src, sizeof(level->environmentCount));
+@@ -877,6 +928,9 @@ ParsedUVLV* _uvExpandTextureCpy(u8* src) {
+         _uvDebugPrintf("bump up NLV_E\n");
+     }
+     _uvMediaCopy(level->environmentIds, src, level->environmentCount * sizeof(u16));
++#ifdef WINGS64_XBOX
++    PW64_SWAP16(level->environmentIds, level->environmentCount);
++#endif
+     src += level->environmentCount * sizeof(u16);
+ 
+     uvConsumeBytes(&level->modelCount, &src, sizeof(level->modelCount));
+@@ -887,6 +941,9 @@ ParsedUVLV* _uvExpandTextureCpy(u8* src) {
+         _uvDebugPrintf("bump up NLV_E\n");
+     }
+     _uvMediaCopy(level->modelIds, src, level->modelCount * sizeof(u16));
++#ifdef WINGS64_XBOX
++    PW64_SWAP16(level->modelIds, level->modelCount);
++#endif
+     src += level->modelCount * sizeof(u16);
+ 
+     uvConsumeBytes(&level->contourCount, &src, sizeof(level->contourCount));
+@@ -897,6 +954,9 @@ ParsedUVLV* _uvExpandTextureCpy(u8* src) {
+         _uvDebugPrintf("bump up NLV_E\n");
+     }
+     _uvMediaCopy(level->contourIds, src, level->contourCount * sizeof(u16));
++#ifdef WINGS64_XBOX
++    PW64_SWAP16(level->contourIds, level->contourCount);
++#endif
+     src += level->contourCount * sizeof(u16);
+ 
+     uvConsumeBytes(&level->textureCount, &src, sizeof(level->textureCount));
+@@ -907,6 +967,9 @@ ParsedUVLV* _uvExpandTextureCpy(u8* src) {
+         _uvDebugPrintf("bump up NLV_E\n");
+     }
+     _uvMediaCopy(level->textureIds, src, level->textureCount * sizeof(u16));
++#ifdef WINGS64_XBOX
++    PW64_SWAP16(level->textureIds, level->textureCount);
++#endif
+     src += level->textureCount * sizeof(u16);
+ 
+     uvConsumeBytes(&level->sequenceCount, &src, sizeof(level->sequenceCount));
+@@ -917,6 +980,9 @@ ParsedUVLV* _uvExpandTextureCpy(u8* src) {
+         _uvDebugPrintf("bump up NLV_E\n");
+     }
+     _uvMediaCopy(level->sequenceIds, src, level->sequenceCount * sizeof(u16));
++#ifdef WINGS64_XBOX
++    PW64_SWAP16(level->sequenceIds, level->sequenceCount);
++#endif
+     src += level->sequenceCount * sizeof(u16);
+ 
+     uvConsumeBytes(&level->animationCount, &src, sizeof(level->animationCount));
+@@ -927,6 +993,9 @@ ParsedUVLV* _uvExpandTextureCpy(u8* src) {
+         _uvDebugPrintf("bump up NLV_E\n");
+     }
+     _uvMediaCopy(level->animationIds, src, level->animationCount * sizeof(u16));
++#ifdef WINGS64_XBOX
++    PW64_SWAP16(level->animationIds, level->animationCount);
++#endif
+     src += level->animationCount * sizeof(u16);
+ 
+     uvConsumeBytes(&level->fontCount, &src, sizeof(level->fontCount));
+@@ -937,6 +1006,9 @@ ParsedUVLV* _uvExpandTextureCpy(u8* src) {
+         _uvDebugPrintf("bump up NLV_E\n");
+     }
+     _uvMediaCopy(level->fontIds, src, level->fontCount * sizeof(u16));
++#ifdef WINGS64_XBOX
++    PW64_SWAP16(level->fontIds, level->fontCount);
++#endif
+     src += level->fontCount * sizeof(u16);
+ 
+     uvConsumeBytes(&level->blitCount, &src, sizeof(level->blitCount));
+@@ -947,6 +1019,9 @@ ParsedUVLV* _uvExpandTextureCpy(u8* src) {
+         _uvDebugPrintf("bump up NLV_E\n");
+     }
+     _uvMediaCopy(level->blitIds, src, level->blitCount * sizeof(u16));
++#ifdef WINGS64_XBOX
++    PW64_SWAP16(level->blitIds, level->blitCount);
++#endif
+     src += level->blitCount * sizeof(u16);
+ 
+     return level;
+@@ -980,6 +1055,9 @@ ParsedUVTR* _uvParseUVTR(u8* src) {
+ 
+     temp_v0 = (ParsedUVTR*)_uvMemAlloc(sizeof(ParsedUVTR), 4);
+     uvConsumeBytes(&temp_v0->unk0, &src, sizeof(temp_v0->unk0));
++#ifdef WINGS64_XBOX
++    PW64_SWAP(&temp_v0->unk0, 1, uvUnkTeraStruct, "6w"); // PW64: BE f32[6]
++#endif
+     uvConsumeBytes(&temp_v0->unk18, &src, sizeof(temp_v0->unk18));
+     uvConsumeBytes(&temp_v0->unk19, &src, sizeof(temp_v0->unk19));
+     uvConsumeBytes(&temp_v0->unk1C, &src, sizeof(temp_v0->unk1C));
+@@ -995,6 +1073,9 @@ ParsedUVTR* _uvParseUVTR(u8* src) {
+             uvMemSet(ptr, 0, sizeof(uvUnkTileStruct));
+         } else {
+             uvConsumeBytes(&ptr->unk0, &src, sizeof(ptr->unk0));
++#ifdef WINGS64_XBOX
++            PW64_SWAP(&ptr->unk0, 1, Mtx4F, "16w"); // PW64: BE f32[16]
++#endif
+             uvConsumeBytes(&ptr->unk44, &src, sizeof(ptr->unk44));
+             uvConsumeBytes(&sp44, &src, sizeof(sp44));
+             ptr->unk40 = gLevelData.contours[sp44];
+@@ -1027,25 +1108,41 @@ ParsedUVBT* _uvParseUVBT(u8* src) {
+     remainder1 = 0;
+ 
+     _uvMediaCopy(&sp80, src, 4);
++#ifdef WINGS64_XBOX
++    sp80 = __builtin_bswap32((u32)sp80); // PW64: was `>>= 32` (BE bytes into the u64's top half)
++#else
+     sp80 >>= 32;
++#endif
+     sp9A = (sp80 & 0xFFFF0000) >> 16;
+     sp98 = sp80;
+     src += 4;
+ 
+     _uvMediaCopy(&sp80, src, 4);
++#ifdef WINGS64_XBOX
++    sp80 = __builtin_bswap32((u32)sp80); // PW64: was `>>= 32` (BE bytes into the u64's top half)
++#else
+     sp80 >>= 32;
++#endif
+     sp96 = (sp80 & 0xFFFF0000) >> 16;
+     sp94 = sp80;
+     src += 4;
+ 
+     _uvMediaCopy(&sp80, src, 4);
++#ifdef WINGS64_XBOX
++    sp80 = __builtin_bswap32((u32)sp80); // PW64: was `>>= 32` (BE bytes into the u64's top half)
++#else
+     sp80 >>= 32;
++#endif
+     sp92 = (sp80 & 0xFFFF0000) >> 16;
+     sp90 = sp80;
+     src += 4;
+ 
+     _uvMediaCopy(&sp80, src, 4);
++#ifdef WINGS64_XBOX
++    sp80 = __builtin_bswap32((u32)sp80); // PW64: was `>>= 32` (BE bytes into the u64's top half)
++#else
+     sp80 >>= 32;
++#endif
+     temp = (sp80 & 0xFFFF0000) >> 16;
+     // fake, probably used to assign sp8C here as well
+     sp8E = temp & 0xFFFF & 0xFFFF & 0xFFFF;

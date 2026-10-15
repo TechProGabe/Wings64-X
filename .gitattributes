@@ -1,2 +1,5 @@
 * text=auto eol=lf
 *.png binary
+# Patches apply to the decomp's LF sources (tools/xbox/fetch_decomp.sh checks
+# it out with core.autocrlf=false); a CRLF checkout of a patch would not apply.
+*.patch -text

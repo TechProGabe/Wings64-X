@@ -1,0 +1,24 @@
+--- a/src/kernel/system.c
++++ b/src/kernel/system.c
+@@ -349,7 +349,21 @@
+         osStartThread(&gAppThread);
+     }
+     osSetThreadPri(NULL, 0);
++#ifdef WINGS64_XBOX
++    // PORT: block instead of spinning. On the N64 this loop only ever ran when every other thread waited;
++    // on the Dreamcast KOS's timer tick handed the CPU to any other ready thread regardless of priority, so the
++    // spin took ~44% of every display-list frame (and the game logic's time). A queue nobody posts to
++    // parks the thread for good.
++    {
++        static OSMesgQueue sIdleQ;
++        static OSMesg sIdleBuf[1];
++        OSMesg m;
++        osCreateMesgQueue(&sIdleQ, sIdleBuf, 1);
++        for (;;) osRecvMesg(&sIdleQ, &m, OS_MESG_BLOCK);
++    }
++#else
+     while (1) { }
++#endif
+ }
+ 
+ u8 uvContMesgInit(void) {

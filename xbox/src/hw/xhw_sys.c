@@ -471,6 +471,25 @@ void xhw_commit(const void* p, uint32_t bytes) {
 }
 uint32_t xhw_lazy_committed_kb(void) { return 0; }
 
+/* The game's 4 MB RDRAM arena (xbox/src/game/rom/rdram.c, patches/017).
+ * Contiguous physical memory, mapped cached at 0x80000000 | physical: the
+ * game tells RAM from ROM by bit 31 (_uvMediaCopy, uvMemRead,
+ * filesystem.c), and ROM addresses are small offsets, so arena addresses
+ * must have it set as N64 KSEG0 addresses did. Below 64 MB (the console is
+ * held to 64 MB: xhw_ramlock.c), page-aligned, PAGE_READWRITE (cached, not
+ * write-combined: the CPU reads it as much as it writes it). Zeroed. */
+void* xhw_rdram_alloc(uint32_t bytes) {
+    void* p = MmAllocateContiguousMemoryEx(bytes, 0, 0x03FFFFFF, 4096, PAGE_READWRITE);
+    if (!p) {
+        xhw_logf("[MEM] rdram: %u KB contiguous not available (%u KB free)", (unsigned)(bytes >> 10),
+                 xhw_mem_free_kb());
+        return NULL;
+    }
+    memset(p, 0, bytes);
+    xhw_logf("[MEM] rdram: %u KB at %08x", (unsigned)(bytes >> 10), (unsigned)(uintptr_t)p);
+    return p;
+}
+
 uint32_t xhw_mem_free_kb(void) {
     MM_STATISTICS st;
     memset(&st, 0, sizeof st);

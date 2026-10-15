@@ -1,0 +1,27 @@
+--- a/include/kernel/uv_graphics.h
++++ b/include/kernel/uv_graphics.h
+@@ -490,15 +490,24 @@
+ /* 208 */ Vec3F unk208[4];
+ /* 238 */ Vec3F unk238;
+ /* 244 */ Vec3F unk244;
++#ifdef WINGS64_XBOX
++/* 250 */ Vec3F unk250[6]; /* PORT: code_7150.c indexes [5]; was [5] + pad28C */
++#else
+ /* 250 */ Vec3F unk250[5];
+ /* 28C */ u8 pad28C[0xC];
++#endif
+ /* 298 */ Vec3F unk298[4];
+ /* 2C8 */ Vec3F unk2C8;
+ /* 2D4 */ Vec3F unk2D4;
++#ifdef WINGS64_XBOX
++/* 2E0 */ Vec3F unk2E0[6]; /* PORT: code_7150.c indexes [5]; was [5] + unk31C */
++/* 328 */ Vec3F unk328[6]; /* PORT: view polygon has up to 5 points; was [1] + pad334 */
++#else
+ /* 2E0 */ Vec3F unk2E0[5];
+ /* 31C */ u8 unk31C[0xC];
+ /* 328 */ Vec3F unk328[1];
+ /* 334 */ u8 pad334[0x3C];
++#endif
+ /* 370 */ u8 unk370;
+ /* 374 */ UnkStruct_80204D94_Unk374 unk374;
+ /* 38C */ u16 viewX0;

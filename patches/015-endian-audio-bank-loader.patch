@@ -1,0 +1,60 @@
+diff --git a/src/kernel/audio_manager.c b/src/kernel/audio_manager.c
+index b886de4..38c2ecf 100644
+--- a/src/kernel/audio_manager.c
++++ b/src/kernel/audio_manager.c
+@@ -7,6 +7,9 @@
+ #include <libc/stddef.h>
+ #include <segment_symbols.h>
+ #include "code_1050.h"
++#ifdef WINGS64_XBOX
++#include <pw64_endian.h> // PW64: native ROM-layout loaders
++#endif
+ 
+ ALCSPlayer gALCSPlayer;
+ ALSndPlayer gALSndPlayer;
+@@ -108,10 +111,18 @@ void uvaManagerInit(void) {
+         alSndpNew(gSndPlayer, &gALSndpConfig);
+         alCSPNew((ALCSPlayer*)gSeqPlayer, &gALSeqpConfig);
+         osSendMesg(&D_80261188, NULL, OS_MESG_BLOCK);
++#ifdef WINGS64_XBOX
++        // PW64: the ROM ALSeqFile is BE with 4-byte offsets; deserialise it
++        // into the host layout (xbox/src/game/rom/pw64_audio_load.c).
++        (void)seqFile;
++        (void)seqFileSize;
++        gSeqFile = pw64_alSeqFileLoad(SEGMENT_ROM_START(audio_seq), &gAudioHeap);
++#else
+         _uvMediaCopy(&seqFile, SEGMENT_ROM_START(audio_seq), 0x8);
+         seqFileSize = (seqFile.seqCount * sizeof(ALSeqData)) + offsetof(ALSeqFile, seqArray);
+         gSeqFile = alHeapAlloc(&gAudioHeap, 1, seqFileSize);
+         _uvMediaCopy(gSeqFile, SEGMENT_ROM_START(audio_seq), seqFileSize);
++#endif
+         alSeqFileNew(gSeqFile, SEGMENT_ROM_START(audio_seq));
+ 
+         for (i = 0; i < gSeqFile->seqCount; i++) {
+@@ -391,14 +402,26 @@ void uvaManager_80204518(s32 arg0) {
+     s32 pad;
+ 
+     uvaManager_80204438(gUVBlockOffsets.UVSX[arg0], &sp5C, &sp54, &sp58);
++#ifdef WINGS64_XBOX
++    // PW64: copy + alBnkfNew (in-place offset patching of the BE, 4-byte
++    // pointer layout) replaced by a deserialiser into host-layout structs
++    // (xbox/src/game/rom/pw64_audio_load.c).
++    bankFile = pw64_alBnkfLoad(SEGMENT_ROM_START(audio_ctl), (u32)SEGMENT_ROM_SIZE(audio_ctl),
++                               SEGMENT_ROM_START(audio_tbl));
++#else
+     bankFile = alHeapAlloc(&gAudioHeap, 1, SEGMENT_ROM_SIZE(audio_ctl));
+     _uvMediaCopy(bankFile, SEGMENT_ROM_START(audio_ctl), SEGMENT_ROM_SIZE(audio_ctl));
+     alBnkfNew(bankFile, SEGMENT_ROM_START(audio_tbl));
++#endif
+     gWaveTableBank = bankFile->bankArray[0];
+     alSeqpSetBank(gSeqPlayer, gWaveTableBank);
++#ifdef WINGS64_XBOX
++    bankFile = pw64_alBnkfLoad(sp5C, sp54, sp58);
++#else
+     bankFile = alHeapAlloc(&gAudioHeap, 1, sp54);
+     _uvMediaCopy(bankFile, sp5C, sp54);
+     alBnkfNew(bankFile, sp58);
++#endif
+     gAudioSXBank = bankFile->bankArray[0];
+     gAudioSXInst = gAudioSXBank->instArray[0];
+     gSndVoiceTable = alHeapAlloc(&gAudioHeap, 1, gSndPlayer->maxSounds * 2);

@@ -1,0 +1,275 @@
+diff --git a/src/kernel/audio_manager.c b/src/kernel/audio_manager.c
+index 38c2ecf..03877e2 100644
+--- a/src/kernel/audio_manager.c
++++ b/src/kernel/audio_manager.c
+@@ -40,7 +40,11 @@ u8* gSequenceData;
+ STATIC_DATA s32 nextDMA = 0;
+ STATIC_DATA s32 curAcmdList = 0;
+ STATIC_DATA s32 D_80248C88 = 0;
++#ifdef WINGS64_XBOX
++#define gAudioHeapStart ((u8*)N64_K0(0x80000400)) // PORT: arena address, not a constant initializer
++#else
+ STATIC_DATA u8* gAudioHeapStart = 0x80000400;
++#endif
+ 
+ ALSeqPlayer* gSeqPlayer = (ALSeqPlayer*)&gALCSPlayer;
+ ALSndPlayer* gSndPlayer = &gALSndPlayer;
+diff --git a/src/kernel/debug.c b/src/kernel/debug.c
+index 8d5e6c9..6275628 100644
+--- a/src/kernel/debug.c
++++ b/src/kernel/debug.c
+@@ -623,7 +623,11 @@ void uvDbg_80233590(void) {
+     f32 sp20;
+     f32 sp1C;
+ 
++#ifdef WINGS64_XBOX
++    sp2C = (u8*)N64_K0(0x80200000);
++#else
+     sp2C = (u8*)0x80200000;
++#endif
+     sp20 = 0.0f;
+     sp1C = 0.0f;
+     while (uvIOUpdate() != 0) {
+@@ -643,7 +647,11 @@ void uvDbg_80233590(void) {
+         if (sp1C > 6553.6f) {
+             sp1C = 6553.6f;
+         }
++#ifdef WINGS64_XBOX
++        sp2C = ((u8*)N64_K0(0x80000000)) + ((s32)sp20 * 0x10) + ((s32)sp1C * 0x140 * 2);
++#else
+         sp2C = ((u8*)0x80000000) + ((s32)sp20 * 0x10) + ((s32)sp1C * 0x140 * 2);
++#endif
+         uvGfxBegin();
+         uvGfxEnd();
+         osViSwapBuffer(sp2C);
+diff --git a/src/kernel/graphics.c b/src/kernel/graphics.c
+index f565b9d..faa8c90 100644
+--- a/src/kernel/graphics.c
++++ b/src/kernel/graphics.c
+@@ -102,9 +102,15 @@ void uvGfxInit(void) {
+     gGfxNumTxtLoads[0] = gGfxNumTxtLoads[1] = 0;
+     gGfxNumMtxLoads[0] = gGfxNumMtxLoads[1] = 0;
+     gGfxNumMtxLoadMults[0] = gGfxNumMtxLoadMults[1] = 0;
++#ifdef WINGS64_XBOX
++    gGfxFbPtrs[0] = N64_K0(0x800DA800);
++    gGfxFbPtrs[1] = N64_K0(0x80100000);
++    D_80299278 = N64_K0(0x803DA800);
++#else
+     gGfxFbPtrs[0] = 0x800DA800;
+     gGfxFbPtrs[1] = 0x80100000;
+     D_80299278 = 0x803DA800;
++#endif
+     gGfxFbIndex = 0;
+     gGfxDisplayListHead = gGfxDisplayListBase[gGfxFbIndex];
+     gGfxFbCurrPtr = gGfxFbPtrs[gGfxFbIndex];
+diff --git a/src/kernel/memory.c b/src/kernel/memory.c
+index 68117bc..3a2f0ae 100644
+--- a/src/kernel/memory.c
++++ b/src/kernel/memory.c
+@@ -34,11 +34,28 @@ u32 D_802B892C;
+ u32 D_802B8930;
+ u32 D_802B8934;
+ 
++#ifdef WINGS64_XBOX
++// PORT: fixed N64 RAM addresses map into the RDRAM arena (N64_K0, wings64_prelude.h).
++#define kernel_TEXT_START (*(u8(*)[1])N64_K0(0x802000A0))
++#define D_803805E0 (*(u8*)N64_K0(0x803805E0))
++#else
+ extern u8 kernel_TEXT_START[];
+ 
+ extern u8 D_803805E0;
++#endif
+ 
+ void uvMemInitBlocks(void) {
++#ifdef WINGS64_XBOX
++    D_802B8830[0].start = N64_K0(0x800DA800);
++    D_802B8830[0].end = N64_K0(0x80100000);
++    D_802B8830[1].start = N64_K0(0x80100000);
++    D_802B8830[1].end = N64_K0(0x80125800);
++    D_802B8830[2].start = N64_K0(0x803DA800);
++    D_802B8830[2].end = N64_K0(0x80400000);
++    D_802B8830[3].start = N64_K0(0x80000400);
++    D_802B8830[3].end = N64_K0(0x800417DC);
++    D_802B8830[4].start = N64_K0(0x80200000);
++#else
+     D_802B8830[0].start = 0x800DA800;
+     D_802B8830[0].end = 0x80100000;
+     D_802B8830[1].start = 0x80100000;
+@@ -48,9 +65,15 @@ void uvMemInitBlocks(void) {
+     D_802B8830[3].start = 0x80000400;
+     D_802B8830[3].end = 0x800417DC;
+     D_802B8830[4].start = 0x80200000;
++#endif
+     D_802B8830[4].end = &D_803805E0;
++#ifdef WINGS64_XBOX
++    D_802B8830[5].start = N64_K0(0x80000000);
++    D_802B8830[5].end = N64_K0(0x80000400);
++#else
+     D_802B8830[5].start = 0x80000000;
+     D_802B8830[5].end = 0x80000400;
++#endif
+     D_802B8820 = 6;
+     D_802B8824 = 0;
+     D_802B8920[0] = 0;
+@@ -62,16 +85,28 @@ void uvMemInitBlocks(void) {
+ void uvMemClearRegions(void) {
+     u32* a;
+ 
++#ifdef WINGS64_XBOX
++    for (a = (u32*)N64_K0(0x800417DC); a < (u32*)N64_K0(0x800DA800); a++) {
++#else
+     for (a = (u32*)0x800417DC; a < (u32*)0x800DA800; a++) {
++#endif
+         *a = 0;
+     }
+ 
+     // the end of this segment is 802000A0 which coincides with kernel_TEXT_START
++#ifdef WINGS64_XBOX
++    for (a = (u32*)N64_K0(0x80125800); a < (u32*)&kernel_TEXT_START; a++) {
++#else
+     for (a = (u32*)0x80125800; a < (u32*)&kernel_TEXT_START; a++) {
++#endif
+         *a = 0;
+     }
+ 
++#ifdef WINGS64_XBOX
++    for (a = (u32*)&D_803805E0; a < (u32*)N64_K0(0x803DA800); a++) {
++#else
+     for (a = (u32*)&D_803805E0; a < (u32*)0x803DA800; a++) {
++#endif
+         *a = 0;
+     }
+ }
+@@ -285,19 +320,38 @@ s32 _uvMemAlloc(u32 size, u32 alignment) {
+ }
+ 
+ void _uvMemFreeScratch(void* addr) {
++#ifdef WINGS64_XBOX
++    // PORT: arena addresses are not constant expressions, so the switch becomes an if chain.
++    if ((u32)addr == N64_K0(0x803DA800)) {
++#else
+     switch ((u32)addr) {
+     case 0x803DA800:
++#endif
+         D_802B8920[0] = 0;
++#ifdef WINGS64_XBOX
++    } else if ((u32)addr == N64_K0(0x800DA800)) {
++#else
+         break;
+     case 0x800DA800:
++#endif
+         D_802B8920[1] = 0;
++#ifdef WINGS64_XBOX
++    } else if ((u32)addr == N64_K0(0x80100000)) {
++#else
+         break;
+     case 0x80100000:
++#endif
+         D_802B8920[2] = 0;
++#ifdef WINGS64_XBOX
++    } else {
++#else
+         break;
+     default:
++#endif
+         _uvDebugPrintf("_uvMemFreeScratch: 0x%x not a scratch area\n", addr);
++#ifndef WINGS64_XBOX
+         break;
++#endif
+     }
+ }
+ 
+@@ -307,11 +361,23 @@ void* _uvMemGetScratch(u32 size) {
+     } else {
+         // clang-format off:returns need to be on same line to match reordering
+         if (D_802B8920[0] == 0) {
++#ifdef WINGS64_XBOX
++            D_802B8920[0] = 1; return N64_K0(0x803DA800);
++#else
+             D_802B8920[0] = 1; return 0x803DA800;
++#endif
+         } else if (D_802B8920[1] == 0) {
++#ifdef WINGS64_XBOX
++            D_802B8920[1] = 1; return N64_K0(0x800DA800);
++#else
+             D_802B8920[1] = 1; return 0x800DA800;
++#endif
+         } else if (D_802B8920[2] == 0) {
++#ifdef WINGS64_XBOX
++            D_802B8920[2] = 1; return N64_K0(0x80100000);
++#else
+             D_802B8920[2] = 1; return 0x80100000;
++#endif
+         } else {
+             _uvDebugPrintf("_uvMemGetScratch: all scratch areas are full\n", size);
+         }
+@@ -342,8 +408,13 @@ void uvLevelInit(void) {
+ 
+     uvGfxWaitForMesg();
+     uvSprtInit();
++#ifdef WINGS64_XBOX
++    D_802B892C = N64_K0(0x8004181C);
++    D_802B8930 = osMemSize + N64_K0(0x80000000);
++#else
+     D_802B892C = 0x8004181C;
+     D_802B8930 = osMemSize + 0x80000000;
++#endif
+     D_802B8824 = 0;
+     D_802B8828 = 0;
+     D_802B53C0 = NULL;
+diff --git a/src/kernel/sched.c b/src/kernel/sched.c
+index bde0cb4..b637b15 100644
+--- a/src/kernel/sched.c
++++ b/src/kernel/sched.c
+@@ -216,7 +216,11 @@ void _uvScCreateScheduler(OSSched* sc, void* stack, s32 priority, u8 mode, u8 nu
+     osCreateMesgQueue(&sc->cmdQ, sc->cmdMsgBuf, OS_SC_MAX_MESGS);
+     osCreateViManager(OS_PRIORITY_VIMGR);
+     osViSetMode(&osViModeTable[mode]);
++#ifdef WINGS64_XBOX
++    osViSwapBuffer((void*)N64_K0(0x80100000));
++#else
+     osViSwapBuffer((void*)0x80100000);
++#endif
+     osViBlack(TRUE);
+     osSetEventMesg(OS_EVENT_SP, &sc->interruptQ, (OSMesg)RSP_DONE_MSG);
+     osSetEventMesg(OS_EVENT_DP, &sc->interruptQ, (OSMesg)RDP_DONE_MSG);
+diff --git a/src/kernel/system.c b/src/kernel/system.c
+index 6293873..f8e032a 100644
+--- a/src/kernel/system.c
++++ b/src/kernel/system.c
+@@ -232,11 +232,19 @@ void bootproc(void* arg0) {
+     u8 sp3C[0x40];
+     s32 i;
+ 
++#ifdef WINGS64_XBOX
++    for (var_v0 = (s32*)N64_K0(0x800DA800); var_v0 < (s32*)N64_K0(0x80100000); var_v0++) {
++#else
+     for (var_v0 = (s32*)0x800DA800; var_v0 < (s32*)0x80100000; var_v0++) {
++#endif
+         *var_v0 = 0;
+     }
+ 
++#ifdef WINGS64_XBOX
++    for (var_v0 = (s32*)N64_K0(0x80100000); var_v0 != (s32*)N64_K0(0x80125800); var_v0++) {
++#else
+     for (var_v0 = (s32*)0x80100000; var_v0 != (s32*)0x80125800; var_v0++) {
++#endif
+         *var_v0 = 0;
+     }
+ 
+diff --git a/src/kernel/user_file.c b/src/kernel/user_file.c
+index e30699b..e4c8782 100644
+--- a/src/kernel/user_file.c
++++ b/src/kernel/user_file.c
+@@ -30,7 +30,11 @@ void* uvUserFileRead(s32 userFileIdx, MemType request) {
+     if (request == MEM_ALLOCATE) {
+         sp34 = (void*)_uvMemAlloc(sp2C, 8);
+     } else {
++#ifdef WINGS64_XBOX
++        sp34 = (void*)N64_K0(0x803DA800);
++#else
+         sp34 = (void*)0x803DA800;
++#endif
+     }
+     _uvMediaCopy(sp34, sp38, sp2C);
+     return sp34;

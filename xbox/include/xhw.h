@@ -27,7 +27,7 @@ extern "C" {
 
 /* ---- logging (COM1 when present, E:\UDATA\57580001\boot.log) ---- */
 void xhw_log(const char* line);
-void xhw_logf(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+void xhw_logf(const char* fmt, ...) __attribute__((format(__printf__, 1, 2)));
 /* Unrecoverable: draw the message on screen, log it, wait, go to the dashboard. */
 void xhw_fatal(const char* title, const char* msg) __attribute__((noreturn));
 
@@ -74,6 +74,10 @@ void xhw_thread_adopt_self(int level);   /* the calling thread becomes one (the 
 
 /* ---- memory ---- */
 uint32_t xhw_mem_free_kb(void);
+/* The game's RDRAM arena: zeroed contiguous memory, cached, page-aligned, at
+ * 0x80000000 | physical (bit 31 set: the game's RAM-not-ROM test). NULL if
+ * there is not that much contiguous memory. Never freed. */
+void* xhw_rdram_alloc(uint32_t bytes);
 /* 128 MB consoles run as 64 MB ones (xhw_ramlock.c): call first in main_body.
  * _log writes the [MEM] line once the log is open. */
 void xhw_ram_lock64(void);

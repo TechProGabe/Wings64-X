@@ -1,0 +1,23 @@
+--- a/src/kernel/system.c
++++ b/src/kernel/system.c
+@@ -454,8 +454,20 @@
+     return 1;
+ }
+
++#ifdef WINGS64_XBOX
++// PORT: the retail build compiled the game's diagnostics out. Forward them to the port log (wx_log.c rate-limits
++// each message) so silent failures (full sort lists, missing models, timeouts) reach the SD log.
++void wings64_uv_debug(const char* fmt, __builtin_va_list ap);
++void _uvDebugPrintf(char* fmt, ...) {
++    __builtin_va_list ap;
++    __builtin_va_start(ap, fmt);
++    wings64_uv_debug(fmt, ap);
++    __builtin_va_end(ap);
++}
++#else
+ void _uvDebugPrintf(char* fmt, ...) {
+ }
++#endif
+
+ void _uvDMA(void* vAddr, u32 devAddr, u32 nbytes) {
+     s32 dest = vAddr;

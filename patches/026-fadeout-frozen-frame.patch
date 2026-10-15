@@ -1,0 +1,35 @@
+--- a/src/app/replay_screen.c
++++ b/src/app/replay_screen.c
+@@ -28,6 +28,9 @@
+ #include "shadow.h"
+ #include "skydiving.h"
+ #include "snd.h"
++#ifdef WINGS64_XBOX
++#include <wings64_fbfreeze.h> // PW64: frozen frame under screen_fadeout
++#endif
+ #include "snow.h"
+ #include "task.h"
+ #include "text_data.h"
+@@ -489,6 +492,11 @@
+     }
+     uvGfxWaitForMesg();
+     uvCopyFrameBuf(0);
++#if defined(WINGS64_XBOX) && WINGS64_FB_FREEZE
++    // DIVERGES: the N64 fades over the copied frame buffer; a renderer that clears every frame
++    // must keep the last frame under each fade frame until the fade ends (wings64_fbfreeze.h)
++    wings64_fb_freeze(1);
++#endif
+     while (var_fs3 > var_fs1 && var_fs0 < 1.0f) {
+         if ((0.38f * var_fs3) < var_fs1) {
+             var_fs1 = var_fs3;
+@@ -525,6 +533,10 @@
+         uvGfxEnd();
+     }
+     func_803141E4();
++#if defined(WINGS64_XBOX) && WINGS64_FB_FREEZE
++    uvGfxWaitForMesg(); // the fade's last frames are drawn before the freeze ends
++    wings64_fb_freeze(0);
++#endif
+ }
+ 
+ void func_8032D90C(void) {

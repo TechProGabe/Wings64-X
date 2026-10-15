@@ -1,0 +1,29 @@
+diff --git a/src/app/test_summary.c b/src/app/test_summary.c
+index 16d0e35..9fdc33f 100644
+--- a/src/app/test_summary.c
++++ b/src/app/test_summary.c
+@@ -200,7 +200,12 @@ void func_8030C6A0(void) {
+     s16* sp6C;
+     s16* sp68;
+     s32 pad;
++#ifdef WINGS64_XBOX
++    // PW64: textFmtInt writes dst[length] and dst[length + 1] (terminators).
++    s16 sp5C[3 + 2];
++#else
+     s16 sp5C[3];
++#endif
+     s32 sp58;
+     s32 var_v1;
+     s32 sp50;
+@@ -238,7 +243,11 @@ void func_8030C6A0(void) {
+     uvVtxEndPoly();
+     uvGfxClearFlags(GFX_STATE_AA);
+     func_803141E4();
++#ifdef WINGS64_XBOX
++    textFmtInt(sp5C, sp50, 3);
++#else
+     textFmtInt(sp5C, sp50, ARRAY_COUNT(sp5C));
++#endif
+     uvSprtDraw(0);
+     uvSprtDraw(1);
+     uvFontSet(6);

@@ -1,0 +1,21 @@
+diff --git a/src/kernel/audio_manager.c b/src/kernel/audio_manager.c
+index 0a3d7fe..b886de4 100644
+--- a/src/kernel/audio_manager.c
++++ b/src/kernel/audio_manager.c
+@@ -70,7 +70,16 @@ void uvaManagerInit(void) {
+     gALSynConfig.heap = &gAudioHeap;
+     if (gALSynConfig.fxType == AL_FX_CUSTOM) {
+         // clang-format off
++#ifdef WINGS64_XBOX
++        // PW64: static. Decomp UB: this block-scope array's lifetime ends at
++        // the closing brace, but gALSynConfig.params keeps pointing at it and
++        // amCreateAudioMgr -> alFxNew reads it after the block. IDO kept the
++        // slot intact; clang -O2 legally drops the dead stores, so release
++        // builds walked garbage fx params off the coroutine stack.
++        static s32 customFxParams[] = {
++#else
+         s32 customFxParams[] = {
++#endif
+             8, /* section count */
+             5200, /* total allocated memory (ms) */
+             /*      input(ms)  output(ms)  fbcoef   ffcoef    gain    chorus rate  chorus delay low-pass filter */

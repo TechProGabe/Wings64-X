@@ -1,0 +1,24 @@
+diff --git a/include/kernel/uv_filesystem.h b/include/kernel/uv_filesystem.h
+index 0f11633..796cd13 100644
+--- a/include/kernel/uv_filesystem.h
++++ b/include/kernel/uv_filesystem.h
+@@ -7,10 +7,19 @@
+ typedef struct UnkPartStruct_Unk8 {
+     Vec4F unk0;
+     s16 unk10;
++#ifdef WINGS64_XBOX
++    // PW64: IDO packs this u16 MSB-first (pw64-formats: format=(flags>>8)&7,
++    // flag=flags&0x800); MSVC packs LSB-first, so declare in reverse order.
++    u16 pad12_8 : 8;
++    u16 unk12_5 : 3;
++    u16 unk12_4 : 1;
++#endif
+     u16 pad12_0 : 4;
++#ifndef WINGS64_XBOX
+     u16 unk12_4 : 1;
+     u16 unk12_5 : 3;
+     u16 pad12_8 : 8;
++#endif
+ } UnkPartStruct_Unk8; // size = 0x14
+ 
+ typedef struct UnkPartStruct {

@@ -1,0 +1,182 @@
+--- a/src/app/game.c
++++ b/src/app/game.c
+@@ -42,6 +42,9 @@
+ #include "app/code_A8C30.h"
+ #include "app/code_B2900.h"
+ #include "app/code_D2B10.h"
++#ifdef WINGS64_XBOX
++#include <wings64_settings.h> // PW64: port settings menu
++#endif
+ 
+ Unk80362690* D_80362690;
+ Unk80362690 D_80362698;
+@@ -201,8 +204,17 @@
+         uvLevelInit();
+         uvLevelAppend(0x49);
+         D_8034F160 = 0x49;
++    }
++#if defined(WINGS64_XBOX) && WINGS64_SETTINGS_MENU
++    // DIVERGES: port settings menu (the title's "Settings" item shares this state and its level load)
++    if (wings64_settings_take_request()) {
++        wings64_settings_screen();
++    } else {
++        optionsTopRender();
+     }
++#else
+     optionsTopRender();
++#endif
+     func_80344258(0);
+     return GAME_STATE_TITLE;
+ }
+--- a/src/app/title_screen.c
++++ b/src/app/title_screen.c
+@@ -19,6 +19,9 @@
+ #include <uv_audio.h>
+ #include <uv_clocks.h>
+ #include <uv_font.h>
++#ifdef WINGS64_XBOX
++#include <wings64_settings.h> // PW64: port settings menu
++#endif
+ 
+ typedef struct {
+     s32 unk0;
+@@ -55,7 +58,13 @@
+ // .data
+ u8 D_80350690 = 1;
+ s32 D_80350694 = 1;
++#if defined(WINGS64_XBOX) && WINGS64_SETTINGS_MENU
++// DIVERGES: port settings menu (third title item "Settings"; its text is set with menuSetItem)
++STATIC_DATA s32 sMainMenuItems[] = { TEXT_GAMESTART, TEXT_OPTION, TEXT_OPTION };
++STATIC_DATA s32 sTitleMenuRow; // one menu row (font height + 1): the menu and its box grow down by it
++#else
+ STATIC_DATA s32 sMainMenuItems[] = { TEXT_GAMESTART, TEXT_OPTION };
++#endif
+ 
+ // .bss
+ Unk80378CE0* D_80378CE0;
+@@ -196,6 +205,10 @@
+ 
+ #if defined(VERSION_JP)
+     menuCreateItems(94, 60, 6, 1.0f, 1.0f, sMainMenuItems, 2);
++#elif defined(WINGS64_XBOX) && WINGS64_SETTINGS_MENU
++    sTitleMenuRow = wings64_settings_title_init();
++    menuCreateItems(102, 60 - sTitleMenuRow, 6, 1.0f, 1.0f, sMainMenuItems, 3);
++    menuSetItem(2, wings64_settings_title_label());
+ #else // VERSION_US
+     menuCreateItems(102, 60, 6, 1.0f, 1.0f, sMainMenuItems, 2);
+ #endif
+@@ -448,6 +461,11 @@
+         case 1:
+             gameState = GAME_STATE_OPTIONS;
+             break;
++#if defined(WINGS64_XBOX) && WINGS64_SETTINGS_MENU
++        case 2:
++            gameState = wings64_settings_open();
++            break;
++#endif
+         case -1:
+             break;
+         }
+@@ -486,6 +504,8 @@
+     screenDrawBox(30, 18, 285, 34, 0, 0, 0, sp30);
+ #if defined(VERSION_JP)
+     screenDrawBox(89, 74, 222, 120, 0, 0, 0, sp30);
++#elif defined(WINGS64_XBOX) && WINGS64_SETTINGS_MENU
++    screenDrawBox(97, 76 - sTitleMenuRow, 202, 118, 0, 0, 0, sp30);
+ #else // VERSION_US
+     screenDrawBox(97, 76, 202, 118, 0, 0, 0, sp30);
+ #endif
+--- a/src/kernel/font.c
++++ b/src/kernel/font.c
+@@ -457,4 +457,68 @@
+     gGfxDisplayListHead--;
+     D_80248E90 += sFontMsgCount;
+     sFontMsgCount = 0;
++}
++
++#ifdef WINGS64_XBOX
++#include <wings64_settings.h>
++#if WINGS64_SETTINGS_MENU
++// DIVERGES: port settings menu (FPS monitor: one string printed in a game font and its display list emitted, game font state untouched)
++// Called from uvGfxEnd after the game's own text. uvFontGenDlist restarts its sprite display list at
++// base + messages-so-far, which would overwrite a batch already emitted this frame, so the overlay
++// continues from where the last batch ended (rsp_dl_next) and generates only its own message.
++int uvFontOverlayStr_port(int fontId, int x, int y, u8 r, u8 g, u8 b, const char* str) {
++    Gfx* base;
++    u32 savedId;
++    u32 savedWidth;
++    f32 savedScaleX;
++    f32 savedScaleY;
++    u8 savedR;
++    u8 savedG;
++    u8 savedB;
++    u8 savedA;
++    s32 savedCount;
++
++    if (gGfxUnkPtrs == NULL || fontId < 0 || fontId >= LEVEL_FONT_COUNT || gGfxUnkPtrs->fonts[fontId] == NULL) {
++        return 0;
++    }
++    if (sFontMsgCount >= FONT_MSG_COUNT) {
++        return 1;
++    }
++    base = &sFontSprite.rsp_dl[gGfxFbIndex * FONT_DL_COUNT];
++    if (sFontSprite.rsp_dl_next < base || sFontSprite.rsp_dl_next >= base + FONT_DL_COUNT) {
++        sFontSprite.rsp_dl_next = base; // last batch was for the other framebuffer
++    }
++    if (sFontSprite.rsp_dl_next + 16 * FONT_MAX_MSG_LEN > base + FONT_DL_COUNT) {
++        return 1; // no room left this frame
++    }
++    savedId = sFontCurId;
++    savedWidth = sFontCurWidth;
++    savedScaleX = sFontScaleX;
++    savedScaleY = sFontScaleY;
++    savedR = sFontColorR;
++    savedG = sFontColorG;
++    savedB = sFontColorB;
++    savedA = sFontColorA;
++    savedCount = sFontMsgCount;
++
++    sFontCurId = fontId;
++    sFontCurWidth = gGfxUnkPtrs->fonts[fontId]->bitmap->width;
++    sFontScaleX = 1.0f;
++    sFontScaleY = 1.0f;
++    uvFontColor(r, g, b, 0xFF);
++    uvFontPrintStr(x, y, str);
++    spInit(&gGfxDisplayListHead);
++    uvFontMsgGenDlist(&sFontMessages[savedCount]);
++    spFinish(&gGfxDisplayListHead);
++    gGfxDisplayListHead--;
++
++    sFontMsgCount = savedCount; // game text still pending stays pending
++    sFontCurId = savedId;
++    sFontCurWidth = savedWidth;
++    sFontScaleX = savedScaleX;
++    sFontScaleY = savedScaleY;
++    uvFontColor(savedR, savedG, savedB, savedA);
++    return 1;
+ }
++#endif
++#endif
+--- a/src/kernel/graphics.c
++++ b/src/kernel/graphics.c
+@@ -10,6 +10,9 @@
+ #include <uv_system.h>
+ #include <macros.h>
+ #include <libc/stdint.h>
++#ifdef WINGS64_XBOX
++#include <wings64_settings.h> // PW64: port settings menu (FPS monitor)
++#endif
+ 
+ #define TASK_OUTPUT_BUFFER_SIZE 0x2000
+ 
+@@ -581,6 +584,10 @@
+         return;
+     }
+     gGfxBeginFlag = FALSE;
++#if defined(WINGS64_XBOX) && WINGS64_SETTINGS_MENU
++    // DIVERGES: port settings menu (FPS monitor drawn last in every frame's display list)
++    wings64_settings_frame();
++#endif
+     gDPFullSync(gGfxDisplayListHead++);
+     gSPEndDisplayList(gGfxDisplayListHead++);
+     gGfxElementCount = (gGfxDisplayListHead - (gGfxDisplayListBase[gGfxFbIndex]));

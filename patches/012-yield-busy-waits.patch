@@ -1,0 +1,83 @@
+diff --git a/src/app/snap.c b/src/app/snap.c
+index 77b0b10..3a948e8 100644
+--- a/src/app/snap.c
++++ b/src/app/snap.c
+@@ -1569,7 +1569,15 @@ s32 func_8033D3EC(s32 arg0, s32 arg1, Unk80373060* arg2, s32* arg3, s32* arg4) {
+         func_8033A72C();
+         for (i = *arg3; i < *arg3 + 6; i++) {
+             uvClkReset(UV_CLKID_APP);
++#ifdef WINGS64_XBOX
++            // PW64: on the N64 retraces, the scheduler and the audio thread
++            // preempt this 0.1 s spin; on the port it shares the CPU,
++            // so yield (else gfx tasks queued before it never start and the
++            // audio thread starves: stutter). Birdman64 yield rule.
++            while (uvClkGetSec(UV_CLKID_APP) < 0.1) { osYieldThread(); }
++#else
+             while (uvClkGetSec(UV_CLKID_APP) < 0.1) { }
++#endif
+             if ((i < arg1) && (arg2[i].unk43[0] != 0)) {
+                 func_8033A610(D_80350560[i % 6][0], D_80350560[i % 6][0] + 80, D_80350560[i % 6][1], D_80350560[i % 6][1] + 59);
+                 func_8033A128(arg0, &arg2[i]);
+@@ -1774,7 +1782,13 @@ s32 func_8033DDD8(s32 arg0, Unk80373060* arg1, s32* arg2) {
+     func_8033ADD4(1, &arg1[sp28], sp28, arg0);
+     func_8033ADD4(1, &arg1[sp28], sp28, arg0);
+     uvClkReset(UV_CLKID_APP);
++#ifdef WINGS64_XBOX
++    // PW64: yield (see func_8033D3EC): the second func_8033ADD4 task must
++    // finish before uvCopyFrameBuf(0) below, else one fb loses the frame.
++    while (uvClkGetSec(UV_CLKID_APP) < 0.1) { osYieldThread(); }
++#else
+     while (uvClkGetSec(UV_CLKID_APP) < 0.1) { }
++#endif
+     func_8033A610(58, 257, 49, 198);
+     func_8033A128(1, &arg1[sp28]);
+     uvCopyFrameBuf(0);
+@@ -1821,7 +1835,12 @@ void func_8033DFD0(s32 arg0, Unk80373060* arg1, s32 arg2) {
+     func_8033ADD4(arg0, &arg1[arg2], 0, 0);
+     func_8033ADD4(arg0, &arg1[arg2], 0, 0);
+     uvClkReset(UV_CLKID_APP);
++#ifdef WINGS64_XBOX
++    // PW64: yield (see func_8033DDD8): else the single-photo view flickers.
++    while (uvClkGetSec(UV_CLKID_APP) < 0.1) { osYieldThread(); }
++#else
+     while (uvClkGetSec(UV_CLKID_APP) < 0.1) { }
++#endif
+     func_8033A610(58, 257, 49, 198);
+     func_8033A128(arg0, &arg1[arg2]);
+     uvCopyFrameBuf(0);
+diff --git a/src/app/title_screen.c b/src/app/title_screen.c
+index 97c8cf7..8ca038e 100644
+--- a/src/app/title_screen.c
++++ b/src/app/title_screen.c
+@@ -324,7 +324,14 @@ STATIC_FUNC void func_803433A4(void) {
+ #if !defined(VERSION_JP)
+ void func_803434E8(void) {
+     uvClkReset(UV_CLKID_APP);
++#ifdef WINGS64_XBOX
++    // PW64: the port shares the CPU between threads; a spin that never yields
++    // starves the scheduler/audio threads (as in snap.c).
++    // No caller in the US build, patched for consistency.
++    while (uvClkGetSec(UV_CLKID_APP) < 1.0) { osYieldThread(); }
++#else
+     while (uvClkGetSec(UV_CLKID_APP) < 1.0) { }
++#endif
+ }
+ #endif
+ 
+diff --git a/src/kernel/audio_seq.c b/src/kernel/audio_seq.c
+index 5183547..f83e97d 100644
+--- a/src/kernel/audio_seq.c
++++ b/src/kernel/audio_seq.c
+@@ -53,6 +53,12 @@ void uvaSeqStop(void) {
+     alSeqpStop(gSeqPlayer);
+     uvClkReset(UV_CLKID_SEQ);
+     while (alSeqpGetState(gSeqPlayer)) {
++#ifdef WINGS64_XBOX
++        // PW64: on the N64 the audio thread preempts this spin and processes
++        // the stop; on the port it may not, so without a yield
++        // the loop always ran into the 2 s timeout (≈6 s per level load).
++        osYieldThread();
++#endif
+         if (uvClkGetSec(UV_CLKID_SEQ) > 2.0) {
+             _uvDebugPrintf("uvaSeqStop timed out\n");
+             return;

@@ -1,0 +1,74 @@
+--- a/include/libultra/PR/R4300.h
++++ b/include/libultra/PR/R4300.h
+@@ -60,6 +60,20 @@
+ 
+ #else /* _LANGUAGE_C */
+ 
++#ifdef WINGS64_XBOX
++/* PORT: identity, as OS_K0_TO_PHYSICAL (os_convert.h): host pointers stay
++ * host pointers (libultra audio's load.c hands ADPCM state and book pointers
++ * to the command list through K0_TO_PHYS). IO_READ/IO_WRITE (rcp.h) would
++ * now touch low addresses instead of KSEG1: the game's one use is patched
++ * out (patches/018), and the RCP registers do not exist here either way. */
++#define	K0_TO_K1(x)	((u32)(x))
++#define	K1_TO_K0(x)	((u32)(x))
++#define	K0_TO_PHYS(x)	((u32)(x))
++#define	K1_TO_PHYS(x)	((u32)(x))
++#define	KDM_TO_PHYS(x)	((u32)(x))
++#define	PHYS_TO_K0(x)	((u32)(x))
++#define	PHYS_TO_K1(x)	((u32)(x))
++#else
+ #define	K0_TO_K1(x)	((u32)(x)|0xA0000000)	/* kseg0 to kseg1 */
+ #define	K1_TO_K0(x)	((u32)(x)&0x9FFFFFFF)	/* kseg1 to kseg0 */
+ #define	K0_TO_PHYS(x)	((u32)(x)&0x1FFFFFFF)	/* kseg0 to physical */
+@@ -67,6 +81,7 @@
+ #define	KDM_TO_PHYS(x)	((u32)(x)&0x1FFFFFFF)	/* direct mapped to physical */
+ #define	PHYS_TO_K0(x)	((u32)(x)|0x80000000)	/* physical to kseg0 */
+ #define	PHYS_TO_K1(x)	((u32)(x)|0xA0000000)	/* physical to kseg1 */
++#endif
+ 
+ #endif	/* _LANGUAGE_ASSEMBLY */
+ 
+--- a/include/libultra/PR/os_convert.h
++++ b/include/libultra/PR/os_convert.h
+@@ -70,6 +70,17 @@
+ #define OS_CYCLES_TO_NSEC(c)	(((u64)(c)*(1000000000LL/15625000LL))/(OS_CPU_COUNTER/15625000LL))
+ #define OS_CYCLES_TO_USEC(c)	(((u64)(c)*(1000000LL/15625LL))/(OS_CPU_COUNTER/15625LL))
+ 
++#ifdef WINGS64_XBOX
++/* PORT: a host pointer is its own "physical" address. Display lists and RSP
++ * task data hold plain host pointers, which the CPU-side interpreters resolve
++ * as they are (plus the segment table): no 0x80000000 wrap that a pointer
++ * already at 0x8xxxxxxx (the contiguous arena) and a converted static pointer
++ * could both produce. osVirtualToPhysical is the identity too (the OS shim). */
++#define	OS_K0_TO_PHYSICAL(x)	((u32)(x))
++#define	OS_K1_TO_PHYSICAL(x)	((u32)(x))
++#define	OS_PHYSICAL_TO_K0(x)	((void *)(u32)(x))
++#define	OS_PHYSICAL_TO_K1(x)	((void *)(u32)(x))
++#else
+ /* OS_K?_TO_PHYSICAL macro bug fix for CodeWarrior */
+ #ifndef __MWERKS__
+ #define	OS_K0_TO_PHYSICAL(x)	(u32)(((char *)(x)-0x80000000))
+@@ -81,6 +92,7 @@
+ 
+ #define	OS_PHYSICAL_TO_K0(x)	(void *)(((u32)(x)+0x80000000))
+ #define	OS_PHYSICAL_TO_K1(x)	(void *)(((u32)(x)+0xa0000000))
++#endif
+ 
+ 
+ /**************************************************************************
+--- a/src/kernel/geometry.c
++++ b/src/kernel/geometry.c
+@@ -344,7 +344,12 @@
+                 var_v0 = 15;
+                 gSPVertex(gGfxDisplayListHead++, OS_PHYSICAL_TO_K0(&gGeomVertexPtrs[var_t5]), 14, 1);
+                 gSP1Triangle(gGfxDisplayListHead++, 0, 15, 1, 0);
++#ifdef WINGS64_XBOX
++                // PORT: a host pointer as it is (OS_PHYSICAL_TO_K0 is the identity, os_convert.h)
++                gSPVertex(gGfxDisplayListHead++, ((u32)(&gGeomVertexPtrs[var_t5])) + 14 * sizeof(Vtx), 1, 15);
++#else
+                 gSPVertex(gGfxDisplayListHead++, (((u32)(&gGeomVertexPtrs[var_t5]) + 0x80000000)) + 14 * sizeof(Vtx), 1, 15);
++#endif
+             } else {
+                 var_v0 = var_t4;
+                 gSPVertex(gGfxDisplayListHead++, OS_PHYSICAL_TO_K0(&gGeomVertexPtrs[var_t5]), var_v0, 1);

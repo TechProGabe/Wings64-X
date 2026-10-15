@@ -1,0 +1,22 @@
+--- a/src/kernel/audio_manager.c
++++ b/src/kernel/audio_manager.c
+@@ -257,7 +257,19 @@
+     task->list.t.dram_stack_size = 0;
+     task->list.t.dram_stack = NULL;
+     uvSc_8022C3C0(0, 0x2C);
++#ifdef WINGS64_XBOX
++    // PORT: the audio command list runs here, on the audio thread, through the RSP audio HLE (PLAN.md D6), and
++    // the task is complete when it returns. Queued on the scheduler it would wait behind the CPU's display-list
++    // interpretation and make this thread miss retraces (wings64-dc measured 7% of audio frames lost).
++    {
++        extern void wings64_audio_task(OSTask* task);
++
++        wings64_audio_task(&task->list);
++    }
++    osSendMesg(&__am.audioReplyMsgQ, &info->msg, OS_MESG_NOBLOCK);
++#else
+     osSendMesg(_uvScGetCmdQ(&gSchedInst), &info->task, OS_MESG_BLOCK);
++#endif
+     curAcmdList ^= 1;
+     return 1;
+ }

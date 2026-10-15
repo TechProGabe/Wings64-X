@@ -1,0 +1,35 @@
+--- a/src/app/snap.c
++++ b/src/app/snap.c
+@@ -30,6 +30,9 @@
+ #include "text_data.h"
+ #include "whale.h"
+ #include "whale_pod.h"
++#ifdef WINGS64_XBOX
++#include <wings64_fbfreeze.h> // PW64: persistent frame buffer for the photo album
++#endif
+ 
+ typedef struct Unk80373060 {
+     Vec3F unk0;
+@@ -1933,6 +1936,11 @@
+     u16 testIdx;
+ 
+     camera = D_80362690->unkC[D_80362690->unk9C].unk70;
++#if defined(WINGS64_XBOX) && WINGS64_FB_PERSIST
++    // DIVERGES: the album draws each photo once and relies on the N64 frame buffer keeping it; a renderer that
++    // clears every frame must start each frame from the last finished one while the album runs
++    wings64_fb_persist(1);
++#endif
+ #if !defined(VERSION_JP)
+     ptr = taskGet_80345CB0();
+ #endif
+@@ -2023,6 +2031,10 @@
+     D_80350594 = 0;
+     taskGetClsVehTest(&classIdx, &vehIdx, &testIdx);
+     func_8033FCD0(vehIdx);
++#if defined(WINGS64_XBOX) && WINGS64_FB_PERSIST
++    uvGfxWaitForMesg(); // the album's last frame is drawn before persistence ends
++    wings64_fb_persist(0);
++#endif
+     return D_80350550;
+ }
+ 

@@ -1,0 +1,29 @@
+diff --git a/src/kernel/system.c b/src/kernel/system.c
+index 1dc404d..6293873 100644
+--- a/src/kernel/system.c
++++ b/src/kernel/system.c
+@@ -67,7 +67,12 @@ s32 osPiRawReadIo(u32 devAddr, u32* data);
+ void Thread_App(void* arg);
+ void Thread_Kernel(void* arg);
+ void Thread_Render(void* arg);
++#ifdef WINGS64_XBOX
++// PW64: the definition (map3d.c) takes no arguments; was (s32), called with a pointer.
++void app_entrypoint(void);
++#else
+ void app_entrypoint(s32);
++#endif
+ void func_8022E558(void);
+ 
+ void func_8020F9F4(void);
+@@ -318,7 +323,11 @@ void Thread_Render(void* arg) {
+ void Thread_App(void* arg) {
+     _uvMediaCopy(app_TEXT_START, app_ROM_START, app_ROM_END - app_ROM_START);
+     uvMemSet(app_BSS_START, 0, app_BSS_END - app_BSS_START);
++#ifdef WINGS64_XBOX
++    app_entrypoint();
++#else
+     app_entrypoint(arg);
++#endif
+ }
+ 
+ void Thread_Kernel(void* arg) {

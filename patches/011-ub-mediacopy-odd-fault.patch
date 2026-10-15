@@ -1,0 +1,16 @@
+diff --git a/src/kernel/memory.c b/src/kernel/memory.c
+index 2c9f6bb..442fcc0 100644
+--- a/src/kernel/memory.c
++++ b/src/kernel/memory.c
+@@ -162,7 +162,11 @@ void _uvMediaCopy(void* vAddr, void* devAddr, u32 nbytes) {
+             _uvDebugPrintf("Media copy src and dst && nbytes must be even\n");
+             // it appears the devs intended to cause a fault by storing to an unaligned address,
+             // but IDO outsmarted them and broke this into two `sb` instructions
++#ifdef WINGS64_XBOX
++            pw64_fatal("_uvMediaCopy: odd src/dst/nbytes", nbytes); // PORT: a store to address 1 is a silent page fault
++#else
+             *(u16*)(1) = 0;
++#endif
+             return;
+         }
+         if ((s32)dst & 7) {

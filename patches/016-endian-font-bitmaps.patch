@@ -1,0 +1,42 @@
+diff --git a/src/kernel/font.c b/src/kernel/font.c
+index c27b133..8505d06 100644
+--- a/src/kernel/font.c
++++ b/src/kernel/font.c
+@@ -4,6 +4,9 @@
+ #include <uv_memory.h>
+ #include <uv_font.h>
+ #include <uv_string.h>
++#ifdef WINGS64_XBOX
++#include <pw64_endian.h> // PW64: native ROM-layout loaders
++#endif
+ 
+ #if defined(VERSION_JP)
+ #define FONT_MAX_MSG_LEN 25
+@@ -99,13 +102,27 @@ ParsedUVFT* uvParseTopUVFT(s32 arg0) {
+             _uvMediaCopy((void*)ret->str, srcAddr, nbytes);
+             break;
+         case 'FRMT':
++#ifdef WINGS64_XBOX
++            // PW64: BE s32 words (low byte kept, as on the N64).
++            ret->bmfmt = (u8)uvMemRead(&srcAddr[0], 4);
++            ret->bmsiz = (u8)uvMemRead(&srcAddr[1], 4);
++#else
+             ret->bmfmt = srcAddr[0];
+             ret->bmsiz = srcAddr[1];
++#endif
+             break;
+         case 'BITM':
++#ifdef WINGS64_XBOX
++            // PW64: N64 Bitmaps are 16 bytes (4-byte buf); the host struct is
++            // wider. Convert from the BE block (scratch RAM, read mode 1).
++            bitmCount = nbytes / PW64_N64_BITMAP_SIZE;
++            ret->bitmap = (Bitmap*)_uvMemAlloc(bitmCount * sizeof(Bitmap), 8);
++            pw64_load_bitmaps(ret->bitmap, srcAddr, bitmCount);
++#else
+             bitmCount = nbytes / sizeof(Bitmap);
+             ret->bitmap = (Bitmap*)_uvMemAlloc(nbytes, 8);
+             _uvMediaCopy((void*)ret->bitmap, srcAddr, nbytes);
++#endif
+             break;
+         case 'IMAG':
+             ret->imag[imagCount] = _uvMemAlloc(nbytes, 8);

@@ -3,6 +3,73 @@
 Newest first. Each milestone entry says what was verified and how; "xemu"
 results are emulator-only (no timing, audio or memory claims from them).
 
+## M2 — the decomp compiles and links (2026-10-15)
+
+Branch: a worktree branch off `port` (M0); nothing pushed.
+
+- `tools/xbox/fetch_decomp.sh [--refresh]`: n64decomp/pw64 at
+  `1a8558f5ceb320cce254d6da0a49a1f2bbc23e21` into `external/pw64-decomp`
+  (gitignored), checked out with `core.autocrlf=false`, then `patches/*.patch`
+  in name order with `patch -p1 --fuzz=0`; the tree replaces the old one only
+  once every patch applied; a stamp (pin + patch hash) makes reruns no-ops.
+- `patches/`: wings64-dc 001-024 and 026-028 (its `0c384bd`), guard renamed
+  `WINGS64_XBOX`, each `.md` with an Import line. Changed for the Xbox: 022
+  runs the audio command list (`wings64_audio_task`, RSP audio HLE in M6)
+  instead of dropping it; 021's helper renamed `uvFontOverlayStr_port`;
+  SH-4/KOS/PVR comments reworded. New: 029 (KSEG0/physical conversions are
+  the identity, `geometry.c:347`'s `+ 0x80000000` dropped; the lead's
+  address model). Table: docs/decisions.md.
+- `xbox/include/game/`: `wings64_prelude.h` (force-included: `WINGS64_XBOX`,
+  `PW64_SWAP`, `N64_K0`, `pw64_fatal`, printf family -> `wx_*`), shadow
+  `macros.h`, `segment_symbols.h` (constants: no linker symbols needed),
+  `pw64_endian.h`, `wings64_settings.h`, `wings64_fbfreeze.h`.
+- `xbox/src/game/`: `rom/` (`pw64_swap.c`, `pw64_rom_structs.c`,
+  `pw64_audio_load.c` without the AICA hook, `pw64_arena.c`, `rdram.c`: the
+  arena from the new `xhw_rdram_alloc` = contiguous, cached, bit 31 set,
+  `layout_checks.c`), `ultra/` (`mio0.c`, `ultra_data.c`, `fatal.c`,
+  `stubs.c`, `hooks.c`), `wx_log.c` (Melee-X's float-aware formatter, the
+  game's printf family and `_uvDebugPrintf` forwarding), `wx_boot.c`
+  (`wx_boot_game`: arena + `bootproc`; not called yet).
+- `tools/xbox/compile_game.py` (game triple, parallel, `-MMD`, flags stamp,
+  `XBOX_GAME_OUT`, `XBOX_GAME_CFLAGS`, `XBOX_LTO`), `tools/xbox/thinlto_link.py`
+  (Melee-X's minus the `.text` renaming), CMake: `-include:_wx_boot_game`,
+  `-errorlimit:0`, `XBOX_LTO` option + `RULE_LAUNCH_LINK`; `xbox/build.sh` and
+  `tools/xbox/msys/build.sh` pass `XBOX_LTO`. `xhw.h`: `xhw_rdram_alloc`;
+  `xhw_logf`'s format attribute spelled `__printf__` (the prelude renames
+  `printf`).
+- Undefined at the first link, now in `ultra/stubs.c` as
+  `pw64_fatal("TODO: <name>")` (41): `__osGetCurrFaultedThread`,
+  `osAiGetLength`, `osAiSetFrequency`, `osAiSetNextBuffer`,
+  `osContGetReadData`, `osContInit`, `osContStartReadData`,
+  `osCreateMesgQueue`, `osCreatePiManager`, `osCreateThread`,
+  `osCreateViManager`, `osEepromLongRead`, `osEepromLongWrite`,
+  `osEepromProbe`, `osGetCount`, `osInitialize`, `osInvalDCache`,
+  `osPiRawReadIo`, `osPiReadIo`, `osPiStartDma`, `osRecvMesg`, `osSendMesg`,
+  `osSetEventMesg`, `osSetIntMask`, `osSetThreadPri`, `osSetTimer`,
+  `osSpTaskLoad`, `osSpTaskStartGo`, `osSpTaskYield`, `osSpTaskYielded`,
+  `osStartThread`, `osViBlack`, `osViGetCurrentFramebuffer`,
+  `osViGetNextFramebuffer`, `osViSetEvent`, `osViSetMode`,
+  `osViSetSpecialFeatures`, `osViSwapBuffer`, `osWritebackDCache`,
+  `osWritebackDCacheAll`, `osYieldThread`; plus `osVirtualToPhysical`, already
+  the identity (42 in all).
+- Verified: fetch from an empty `external/` applies all 28 patches with zero
+  fuzz; 197 decomp + 13 port units compile with no compiler output at all
+  (`layout_checks.c`'s 60 `_Static_assert`s hold under the game triple); the
+  link has no undefined symbols; `default.xbe` 1,861,632 bytes (`.text`
+  0x1993FC = 1,676,284 bytes); ThinLTO build 1,820,672 bytes (`.text`
+  0x1909DC). xemu (64 MB, no ROM): both boot to the splash and the M0
+  "Nothing to run" card (the card's text still says the game is not linked:
+  `xhw_main.c` is the M1 agent's).
+- Not verified: anything running game code (nothing calls it);
+  `xhw_rdram_alloc` at run time (not called yet).
+- Open for M3: the OS shim replaces `stubs.c` (threads on kernel stacks, so
+  stack locals pass the bit-31 RAM test); static RAM sources of
+  `_uvMediaCopy` in `save.c` and `task.c` read as ROM (docs/decisions.md,
+  "Memory map"); `hooks.c` stubs: Settings (M7, `-DWINGS64_SETTINGS_MENU=0`
+  until then or the title stops at a TODO card), frame persistence (renderer),
+  audio task (M6); ThinLTO as the default once the game runs both ways; the
+  Docker files still name Melee-X's image and `disc_lower` (M0 copy).
+
 ## M1 — ROM validation (2026-10-15)
 
 Branch `worktree-agent-af49dbd909c92a453` (from `port` at M0; nothing pushed). PLAN 3.1 in full; procedure in `docs/rom.md`.

@@ -33,12 +33,20 @@ target_compile_options(wx_pbkit PRIVATE -w)
 # ---- game objects (tools/xbox/compile_game.py, incremental via depfiles) ----
 # Absent until the decomp is fetched (tools/xbox/fetch_decomp.sh, M2): the
 # XBE is then the platform layer alone, which boots to a card.
+# XBOX_LTO (xbox/build.sh: XBOX_LTO=1): the game code as bitcode, ThinLTO at
+# the link (tools/xbox/thinlto_link.py); its own object folder.
+option(XBOX_LTO "ThinLTO over the game code" OFF)
 set(GAME_OUT ${CMAKE_BINARY_DIR}/game)
+set(GAME_ENV XBOX_LTO=)
+if(XBOX_LTO)
+    set(GAME_OUT ${GAME_OUT}-lto)
+    set(GAME_ENV XBOX_LTO=1)
+endif()
 option(WX_GAME "link the game (needs external/pw64-decomp)" ON)
 if(WX_GAME AND EXISTS ${ROOT}/external/pw64-decomp/src)
     set(WX_HAVE_GAME 1)
     add_custom_target(game_objs
-        COMMAND ${CMAKE_COMMAND} -E env XBOX_GAME_OUT=${GAME_OUT} "XBOX_GAME_CFLAGS=${CMAKE_C_FLAGS}" python3 ${ROOT}/tools/xbox/compile_game.py
+        COMMAND ${CMAKE_COMMAND} -E env XBOX_GAME_OUT=${GAME_OUT} ${GAME_ENV} "XBOX_GAME_CFLAGS=${CMAKE_C_FLAGS}" python3 ${ROOT}/tools/xbox/compile_game.py
         WORKING_DIRECTORY ${ROOT}
         BYPRODUCTS ${GAME_OUT}/objects.txt ${GAME_OUT}/objects.stamp
         COMMENT "game code: compile"
@@ -73,13 +81,22 @@ target_link_options(wings64_x PRIVATE
     -stack:1048576
     -include:_automount_d_drive
     -map:${CMAKE_BINARY_DIR}/wings64_x.map
+    # every undefined symbol, not the first 20
+    -errorlimit:0
     # never fold two identical functions into one address: the game
     # compares function pointers
     -opt:noicf)
 if(WX_HAVE_GAME)
     add_dependencies(wings64_x game_objs)
+    if(XBOX_LTO)
+        set_property(TARGET wings64_x PROPERTY RULE_LAUNCH_LINK "python3 ${ROOT}/tools/xbox/thinlto_link.py")
+    endif()
     set_property(TARGET wings64_x APPEND PROPERTY LINK_DEPENDS ${GAME_OUT}/objects.stamp)
-    target_link_options(wings64_x PRIVATE "@${GAME_OUT}/objects.txt")
+    # The game objects come from outside CMake; the response file lists them.
+    # Nothing calls the game yet (M2): wx_boot_game (xbox/src/game/wx_boot.c)
+    # references bootproc, and -include keeps it, so the whole decomp is
+    # resolved at link time (an undefined symbol fails the link).
+    target_link_options(wings64_x PRIVATE "@${GAME_OUT}/objects.txt" -include:_wx_boot_game)
 endif()
 add_custom_command(TARGET wings64_x POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/xbe

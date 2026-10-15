@@ -1,0 +1,64 @@
+diff --git a/src/kernel/matrix.c b/src/kernel/matrix.c
+index 12220bb..2c689f0 100644
+--- a/src/kernel/matrix.c
++++ b/src/kernel/matrix.c
+@@ -186,11 +186,19 @@ void uvMat4CopyF2L(Mtx* dst, Mtx4F* src) {
+     if (src->m[3][0] > 32767.0f) {
+         dst2->i[3][0] = 0x7FFF;
+         _uvDebugPrintf("s+12 overfow: %f\n", src->m[3][0]);
++#ifdef WINGS64_XBOX
++        /* PORT: no fault; the overflowing translation is already clamped above */
++#else
+         *(s16*)1 = 0;
++#endif
+     } else if (src->m[3][0] < -32767.0f) {
+         *(s16*)&dst2->i[3][0] = -0x8000;
+         _uvDebugPrintf("s+12 overfow: %f\n", src->m[3][0]);
++#ifdef WINGS64_XBOX
++        /* PORT: no fault; the overflowing translation is already clamped above */
++#else
+         *(s16*)1 = 0;
++#endif
+     } else {
+         xw = (s32)((src->m[3][0] * 65536.0f) + 0.5f);
+         dst2->i[3][0] = xw >> 0x10;
+@@ -200,11 +208,19 @@ void uvMat4CopyF2L(Mtx* dst, Mtx4F* src) {
+     if (src->m[3][1] > 32767.0f) {
+         dst2->i[3][1] = 0x7FFF;
+         _uvDebugPrintf("s+13 overfow: %f\n", src->m[3][1]);
++#ifdef WINGS64_XBOX
++        /* PORT: no fault; the overflowing translation is already clamped above */
++#else
+         *(s16*)1 = 0;
++#endif
+     } else if (src->m[3][1] < -32767.0f) {
+         *(s16*)&dst2->i[3][1] = -0x8000;
+         _uvDebugPrintf("s+13 overfow: %f\n", src->m[3][1]);
++#ifdef WINGS64_XBOX
++        /* PORT: no fault; the overflowing translation is already clamped above */
++#else
+         *(s16*)1 = 0;
++#endif
+     } else {
+         yw = (s32)((src->m[3][1] * 65536.0f) + 0.5f);
+         dst2->i[3][1] = yw >> 0x10;
+@@ -214,11 +230,19 @@ void uvMat4CopyF2L(Mtx* dst, Mtx4F* src) {
+     if (src->m[3][2] > 32767.0f) {
+         dst2->i[3][2] = 0x7FFF;
+         _uvDebugPrintf("s+14 overfow: %f\n", src->m[3][2]);
++#ifdef WINGS64_XBOX
++        /* PORT: no fault; the overflowing translation is already clamped above */
++#else
+         *(s16*)1 = 0;
++#endif
+     } else if (src->m[3][2] < -32767.0f) {
+         *(s16*)&dst2->i[3][2] = -0x8000;
+         _uvDebugPrintf("s+14 overfow: %f\n", src->m[3][2]);
++#ifdef WINGS64_XBOX
++        /* PORT: no fault; the overflowing translation is already clamped above */
++#else
+         *(s16*)1 = 0;
++#endif
+     } else {
+         zw = (s32)((src->m[3][2] * 65536.0f) + 0.5f);
+         dst2->i[3][2] = zw >> 0x10;

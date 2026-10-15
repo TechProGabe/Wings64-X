@@ -10,7 +10,7 @@
  
  // number of frames to render for camera shutter animation
  #define CAMERA_SHUTTER_FRAMES 3
-@@ -308,6 +311,9 @@
+@@ -313,6 +316,9 @@
              } else if (sHudState.renderFlags & HUD_RENDER_BIRDMAN) {
                  hudDrawBirdman(&sHudState);
              }
@@ -20,7 +20,7 @@
              hudDrawLowFuel(&sHudState);
              hudDrawStartText(&sHudState);
              if (sHudState.showController != 0) {
-@@ -317,6 +323,9 @@
+@@ -322,6 +328,9 @@
          sHudState.unkC++;
          sHudState.unk14 += D_8034F854;
          uvFontGenDlist();
@@ -30,7 +30,7 @@
          uvGfxMtxViewPop();
      }
  }
-@@ -375,6 +384,9 @@
+@@ -380,6 +389,9 @@
      s32 pad3;
  
      if (arg0->speed == 0.0f) {
@@ -40,7 +40,7 @@
          uvGfxStatePush();
          uvGfxSetFlags(GFX_STATE_XLU);
          uvGfxClearFlags(GFX_STATE_AA | GFX_STATE_ZBUFFER);
-@@ -436,6 +448,9 @@
+@@ -441,6 +453,9 @@
              uvVtxEndPoly();
              uvGfxStatePop();
          }
@@ -50,7 +50,7 @@
          uvGfxStatePush();
          uvGfxSetFlags(GFX_STATE_XLU);
          uvGfxClearFlags(GFX_STATE_AA | GFX_STATE_ZBUFFER);
-@@ -572,6 +587,9 @@
+@@ -577,6 +592,9 @@
          uvVtx(156, 29, 0, 0, 0, 255, 0, 0, 255);
          uvVtxEndPoly();
          uvGfxStatePop();
@@ -60,7 +60,7 @@
          uvGfxStatePush();
          uvGfxSetFlags(GFX_STATE_XLU);
          uvGfxClearFlags(GFX_STATE_AA | GFX_STATE_ZBUFFER);
-@@ -688,6 +706,9 @@
+@@ -693,6 +711,9 @@
  void hudDrawCamera(HUDState* hud) {
      s32 x;
  
@@ -70,7 +70,7 @@
      if (hud->cameraState & HUD_CAM_RENDER_RETICLE) {
          // clang-format off
          uvSprtProps(9,
-@@ -711,8 +732,21 @@
+@@ -719,8 +740,21 @@
              x = hud->cameraState * (240 / CAMERA_SHUTTER_FRAMES);
          }
          uvGfxBindTexture(GFX_STATE_TEXTURE_NONE);
@@ -89,10 +89,10 @@
 +        uvVtxRect(0, SCREEN_HEIGHT - 1, x, 0);
 +        uvVtxRect(SCREEN_WIDTH - 1 - x, SCREEN_HEIGHT - 1, SCREEN_WIDTH - 1, 0);
 +#endif
-         hud->cameraState--;
-         D_8034F914 = 0;
-     }
-@@ -918,6 +952,9 @@
+ #ifdef WINGS64_XBOX
+         // DIVERGES: frame rate (patches/041): the shutter lasted CAMERA_SHUTTER_FRAMES
+         // frames: count N64 frames. Never below 0: the high bits are the
+@@ -936,6 +970,9 @@
  }
  
  void hudDrawThrottle(s32 x, s32 y, f32 power) {
@@ -102,7 +102,7 @@
      Mtx4F rot;
      UNUSED s16* fakePtr;
      s16 y1;
-@@ -979,6 +1016,9 @@
+@@ -997,6 +1034,9 @@
  }
  
  void hudDrawRadar(s32 x, s32 y, f32 xOff, f32 yOff, f32 heading, f32 pitch, HUDRadar* radar) {
@@ -112,7 +112,7 @@
      Mtx4F sp108;
      Mtx4F spC8;
      f32 temp_fa0;
-@@ -1243,6 +1283,9 @@
+@@ -1271,6 +1311,9 @@
  }
  
  void hudDemoController(void) {
@@ -122,7 +122,7 @@
      s32 screenX;
      s32 screenY;
      f32 stickX;
-@@ -1299,6 +1342,9 @@
+@@ -1327,6 +1370,9 @@
  }
  
  void hudDrawSpeed(s32 x, s32 y, s32 speed, s32 highlightLowSpeed) {
@@ -132,7 +132,7 @@
      char str[12];
      s32 numX;
  
-@@ -1327,6 +1373,9 @@
+@@ -1355,6 +1401,9 @@
  }
  
  void hudDrawFuel(s32 x, s32 y, f32 fuel) {
@@ -142,7 +142,7 @@
      s16 curX1;
      s16 curX2;
      s16 curY1;
-@@ -1415,6 +1464,9 @@
+@@ -1443,6 +1492,9 @@
  }
  
  void hudDrawAltimeter(s32 x, s32 y, s32 altitude) {
@@ -152,7 +152,7 @@
      s32 pad32;
      s16 sp72;
      s16 pad16;
-@@ -1534,6 +1586,9 @@
+@@ -1562,6 +1614,9 @@
  }
  
  void hudSeaLevel(s32 x, s32 y, s32 alt) {
@@ -162,7 +162,7 @@
      char str[12];
  
      y += 8;
-@@ -1561,6 +1616,9 @@
+@@ -1589,6 +1644,9 @@
  }
  
  void hudDrawTimer(s32 x, s32 y, f32 timeSecF) {
@@ -172,7 +172,7 @@
      static s32 D_8034F938 = 0;
      s32 timeMs;
      s32 timeSec;
-@@ -1613,6 +1671,9 @@
+@@ -1641,6 +1699,9 @@
  }
  
  void hudDrawAimReticle(s32 x, s32 y, s32 flag) {
@@ -182,7 +182,7 @@
      s16 centerX;
      s16 centerY;
  
-@@ -2055,6 +2116,9 @@
+@@ -2083,6 +2144,9 @@
  }
  
  void hudDrawPhotoCount(void) {

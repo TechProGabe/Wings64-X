@@ -28,7 +28,8 @@
  *
  * Pages (k_pages): "Port settings" is Video >, Controls >, System > and Return;
  * Video: Resolution (restart: `*`), Widescreen (Off / On / Auto, at once),
- * Texture filter, FPS counter, Apply and restart; Controls: Stick dead zone
+ * Texture filter, FPS counter, Frame rate (60 / 30, at once; PLAN.md M5),
+ * Apply and restart; Controls: Stick dead zone
  * with the raw stick's tilt next to it, Rumble; System: Screenshots. Each
  * sub-menu ends in Return (B does the same), which goes back up one level.
  * Buttons come with remapping. settings.ini is
@@ -251,7 +252,7 @@ static void out_text(char* buf, int out) {
 
 /* ------------------------------------------------------------------ the panel */
 
-enum { ROW_VIDEO, ROW_FPS, ROW_SHOTS, ROW_DEADZONE, ROW_RESTART, ROW_RETURN, ROW_FILTER, ROW_RUMBLE, ROW_WIDE,
+enum { ROW_VIDEO, ROW_FPS, ROW_SHOTS, ROW_DEADZONE, ROW_RESTART, ROW_RETURN, ROW_FILTER, ROW_RUMBLE, ROW_WIDE, ROW_RATE,
        ROW_PAGE_VIDEO, ROW_PAGE_CONTROLS, ROW_PAGE_SYSTEM };
 
 /* The panel is a top level ("Port settings") and three sub-menus. A page is
@@ -264,7 +265,7 @@ enum { PAGE_TOP, PAGE_VIDEO, PAGE_CONTROLS, PAGE_SYSTEM, PAGE_COUNT };
 static const s32 k_page_top[]      = { ROW_PAGE_VIDEO, ROW_PAGE_CONTROLS, ROW_PAGE_SYSTEM, ROW_RETURN };
 /* "Apply and restart" sits under the rows it applies (the `*` ones);
    System holds Screenshots (every build: maintainer, console run 8) */
-static const s32 k_page_video[]    = { ROW_VIDEO, ROW_WIDE, ROW_FILTER, ROW_FPS, ROW_RESTART, ROW_RETURN };
+static const s32 k_page_video[]    = { ROW_VIDEO, ROW_WIDE, ROW_FILTER, ROW_FPS, ROW_RATE, ROW_RESTART, ROW_RETURN };
 static const s32 k_page_controls[] = { ROW_DEADZONE, ROW_RUMBLE, ROW_RETURN };
 static const s32 k_page_system[]   = { ROW_SHOTS, ROW_RETURN };
 
@@ -280,7 +281,7 @@ static const char* const k_filter_names[] = { "N64", "Sharp" };   /* Smooth drop
 /* optionsInitMain: menuCreateItems(80, ...); the panel starts further left
    so the value column and the stick readout fit on the 320-wide screen */
 #define PANEL_X 48
-#define MAX_ROWS 10
+#define MAX_ROWS 12
 #define ROW_CAP 44   /* FONT_MAX_MSG_LEN (US) */
 #define REPEAT_FIRST 24   /* retraces held before the dead zone repeats */
 #define REPEAT_EVERY 6
@@ -323,6 +324,8 @@ static const char* row_label(s32 kind) {
         return "Rumble";
     case ROW_FPS:
         return "FPS counter";
+    case ROW_RATE:
+        return "Frame rate";
     case ROW_SHOTS:
         return "Screenshots";
     case ROW_DEADZONE:
@@ -360,6 +363,9 @@ static void panel_set_row(s32 idx) {
         break;
     case ROW_FPS:
         snprintf(v, sizeof v, "%s", g_wx_settings.fps ? "On" : "Off");
+        break;
+    case ROW_RATE:
+        snprintf(v, sizeof v, "%d", g_wx_settings.fps_mode == 30 ? 30 : 60);
         break;
     case ROW_SHOTS:
         snprintf(v, sizeof v, "%s", g_wx_settings.screenshots ? "On" : "Off");
@@ -445,6 +451,7 @@ static void panel_init(void) {
     glyphs(sHint[ROW_VIDEO], 0, ROW_CAP, MENU_FONT, "HD needs an HD cable");
     glyphs(sHint[ROW_WIDE], 0, ROW_CAP, MENU_FONT, "Auto: 16:9 at 720p and 1080i");
     glyphs(sHint[ROW_FPS], 0, ROW_CAP, MENU_FONT, "Frame rate, top left");
+    glyphs(sHint[ROW_RATE], 0, ROW_CAP, MENU_FONT, "30 caps it like the N64");
     glyphs(sHint[ROW_RESTART], 0, ROW_CAP, MENU_FONT, "Restarts to apply *");
     glyphs(sHint[ROW_DEADZONE], 0, ROW_CAP, MENU_FONT, "Ignores small stick drift");
     glyphs(sHint[ROW_RUMBLE], 0, ROW_CAP, MENU_FONT, "Shakes when you crash");
@@ -476,6 +483,10 @@ static void panel_change(s32 idx, s32 dir) {
     case ROW_FPS:
         g_wx_settings.fps = !g_wx_settings.fps;
         wx_settings_apply_fps();
+        break;
+    case ROW_RATE:   /* applied at the next retrace (os_shim.c vi_thread) */
+        g_wx_settings.fps_mode = g_wx_settings.fps_mode == 30 ? 60 : 30;
+        xhw_logf("[SETTINGS] frame rate %d", g_wx_settings.fps_mode);
         break;
     case ROW_SHOTS:
         g_wx_settings.screenshots = !g_wx_settings.screenshots;
@@ -510,10 +521,11 @@ static void panel_dpad_move(s32 cur) {
 
 static void panel_save(void) {
     if (!sDirty) return;
-    xhw_logf("[SETTINGS] output %s, widescreen %d, texture filter %s, rumble %d, fps %d, screenshots %d, "
-             "stick dead zone %d%%",
+    xhw_logf("[SETTINGS] output %s, widescreen %d, texture filter %s, rumble %d, fps %d, frame rate %d, "
+             "screenshots %d, stick dead zone %d%%",
              k_out_names[g_wx_settings.output], g_wx_settings.widescreen, k_filter_names[g_wx_settings.tex_filter ? 1 : 0],
-             g_wx_settings.rumble, g_wx_settings.fps, g_wx_settings.screenshots, g_wx_settings.stick_deadzone);
+             g_wx_settings.rumble, g_wx_settings.fps, g_wx_settings.fps_mode, g_wx_settings.screenshots,
+             g_wx_settings.stick_deadzone);
     wx_settings_save();
     sDirty = 0;
 }

@@ -71,8 +71,10 @@ Press **Back** on the title screen and the settings panel opens. It's also in th
 | page | row | what it does |
 |---|---|---|
 | Video | Resolution `*` | Auto, 480i, 480p, 720p or 1080i, within what your dashboard and cable allow; it shows what you'll actually get, like `720p > 480i` |
+| Video | Widescreen | Off, On or Auto (the default). Auto is 16:9 at 720p and 1080i, and follows the dashboard's widescreen setting at 480. 16:9 shows more of the world at the sides, and the flight gauges move to the screen edges. Applies at once |
 | Video | Texture filter | N64 (the game's own look, the default) or Sharp (crisp square pixels). Applies at once |
 | Video | FPS counter | Frames per second in the top left corner. Applies at once |
+| Video | Frame rate | 60 (the default) or 30, the N64's pace. Applies at once |
 | Video | Apply and restart | Restarts the port to apply the rows marked `*`; it does nothing when none changed |
 | Controls | Stick dead zone | 0 to 60 %, in steps of 5 (default 20 %). A live readout shows how far the stick is tilted, so you can pick a value for your controller |
 | Controls | Rumble | On or off: the controller rumbles when you crash |

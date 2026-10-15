@@ -1,0 +1,23 @@
+--- a/src/app/code_9A960.c
++++ b/src/app/code_9A960.c
+@@ -157,7 +157,20 @@
+         return arg0;
+     }
+ 
++#ifdef WINGS64_XBOX
++    // DIVERGES: frame rate (patches/039): this explicit-Euler step moves arg2 * dt of
++    // the way per frame; the game's k = 10-15 (k * dt ~ 0.5 on the N64) then settles
++    // faster at 30 fps than at 60. Move the fraction the N64 covered in dt instead:
++    // 1 - (1 - k * REF_DT) ** (dt / REF_DT) (Birdman64, MIT). k <= 0 or k * REF_DT >= 1
++    // (the snap case) as before.
++    if (WX_RATE && (arg2 > 0.0f) && (arg2 * WX_REF_DT < 1.0f)) {
++        temp_ft4 = var_fv0 * (1.0f - wx_rate_powf(1.0f - arg2 * WX_REF_DT, D_8034F854 * (1.0f / WX_REF_DT)));
++    } else {
++        temp_ft4 = arg2 * var_fv0 * D_8034F854;
++    }
++#else
+     temp_ft4 = arg2 * var_fv0 * D_8034F854;
++#endif
+     if (FABS(var_fv0) < FABS(temp_ft4)) {
+         arg1 = arg0;
+     } else {

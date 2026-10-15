@@ -1,0 +1,34 @@
+--- a/src/app/code_9A960.c
++++ b/src/app/code_9A960.c
+@@ -4,6 +4,9 @@
+ #include <uv_matrix.h>
+ #include "code_9A960.h"
+ #include "task.h"
++#ifdef WINGS64_XBOX
++#include <wings64_rate.h>
++#endif
+ 
+ f32 D_8034F850 = 0.0f;          // current time
+ f32 D_8034F854 = 0.1000000015f; // actual time since last frame
+@@ -211,6 +214,13 @@
+     f32 temp_fv0;
+ 
+     temp_fv0 = uvGfxGetFrameTime();
++#ifdef WINGS64_XBOX
++    // DIVERGES: frame rate (patches/038, PLAN.md M5): the same [0.01, 0.1] clamp,
++    // plus the N64 frames this frame stands for (wings64_rate.h), which the rate
++    // patches 039-045 scale their per-frame steps by; the frozen-time screens
++    // (uvGfxSetFrameTime 1e-5) get 0.01 s per N64 frame of real time, not per frame.
++    D_8034F854 = wx_rate_frame(temp_fv0);
++#else
+     if (temp_fv0 < 0.01f) {
+         D_8034F854 = 0.01f;
+     } else if (temp_fv0 > 0.1f) {
+@@ -218,6 +228,7 @@
+     } else {
+         D_8034F854 = temp_fv0;
+     }
++#endif
+     D_8034F850 += D_8034F854;
+     D_8034F858 += 1;
+ }

@@ -38,6 +38,7 @@ typedef struct {
     int stick_deadzone;  /* percent, 0..60 */
     int tex_filter;      /* 0 N64 (the game's per-texture choice), 1 sharp (point sampling) */
     int rumble;          /* 1: the controller rumbles on a crash */
+    int fps_mode;        /* 60 or 30: the game's frame rate cap (os_shim.c vi_thread; PLAN.md M5) */
     char video_confirmed[8];
 } WxSettings;
 extern WxSettings g_wx_settings;

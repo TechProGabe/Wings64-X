@@ -1,0 +1,462 @@
+--- a/src/app/code_82B90.c
++++ b/src/app/code_82B90.c
+@@ -910,7 +910,12 @@
+     } else if (arg1 < -0.2f) {
+         arg1 = -0.2f;
+     }
++#ifdef WINGS64_XBOX
++    // DIVERGES: frame rate (patches/045): leg angle step was per frame (visual): per N64 frame
++    jhData->unk598 -= arg1 * 25.0f * wx_rate_scale();
++#else
+     jhData->unk598 -= arg1 * 25.0f;
++#endif
+ 
+     if (jhData->unk598 > 30.0f) {
+         jhData->unk598 = 30.0f;
+@@ -926,7 +931,12 @@
+     } else if (arg1 < -0.2f) {
+         arg1 = -0.2f;
+     }
++#ifdef WINGS64_XBOX
++    // DIVERGES: frame rate (patches/045): per N64 frame (visual)
++    jhData->unk5A0 -= arg1 * 25.0f * wx_rate_scale();
++#else
+     jhData->unk5A0 -= arg1 * 25.0f;
++#endif
+ 
+     if (jhData->unk5A0 > 10.0f) {
+         jhData->unk5A0 = 10.0f;
+@@ -949,7 +959,12 @@
+     } else if (arg1 < -0.2f) {
+         arg1 = -0.2f;
+     }
++#ifdef WINGS64_XBOX
++    // DIVERGES: frame rate (patches/045): per N64 frame (visual)
++    jhData->unk5A8 -= arg1 * 25.0f * wx_rate_scale();
++#else
+     jhData->unk5A8 -= arg1 * 25.0f;
++#endif
+ 
+     if (jhData->unk5A8 > 10.0f) {
+         jhData->unk5A8 = 10.0f;
+@@ -995,7 +1010,12 @@
+     if (jhData->unk548 > 360.0f) {
+         jhData->unk548 -= 360.0f;
+     }
++#ifdef WINGS64_XBOX
++    // DIVERGES: frame rate (patches/045): swing amplitude decay was per frame (visual): per N64 frame
++    jhData->unk54C *= wx_rate_decay(0.95f);
++#else
+     jhData->unk54C *= 0.95f;
++#endif
+     temp_fv1 = 50.0f;
+     temp_fa0 = (uvCosF(jhData->unk548 * 0.0174533f) * (temp_fv1 * 0.5f) * jhData->unk54C) + (-15.0f + (temp_fv1 * 0.5f));
+     func_802FBCA8(jhData, jhData->unk65A, temp_fa0, 'x');
+@@ -1020,10 +1040,20 @@
+     }
+     if (jhData->unk55C != 0) {
+         var_fa1 = 235.0f;
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/045): per N64 frame (visual)
++        jhData->unk554 *= wx_rate_decay(0.995f);
++#else
+         jhData->unk554 *= 0.995f;
++#endif
+     } else {
+         var_fa1 = 95.0f;
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/045): per N64 frame (visual)
++        jhData->unk554 *= wx_rate_decay(0.985f);
++#else
+         jhData->unk554 *= 0.985f;
++#endif
+     }
+ 
+     jhData->unk5A0 = (uvCosF(jhData->unk550 * 0.0174533f) * (var_fa1 * 0.5f) * jhData->unk554) + (-85.0f + (var_fa1 * 0.5f));
+@@ -1060,10 +1090,20 @@
+     }
+     if (jhData->unk56C != 0) {
+         var_fa1 = 235.0f;
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/045): per N64 frame (visual)
++        jhData->unk564 *= wx_rate_decay(0.995f);
++#else
+         jhData->unk564 *= 0.995f;
++#endif
+     } else {
+         var_fa1 = 95.0f;
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/045): per N64 frame (visual)
++        jhData->unk564 *= wx_rate_decay(0.985f);
++#else
+         jhData->unk564 *= 0.985f;
++#endif
+     }
+ 
+     jhData->unk5A8 = (uvCosF(jhData->unk560 * 0.0174533f) * (var_fa1 * 0.5f) * jhData->unk564) + (-85.0f + (var_fa1 * 0.5f));
+@@ -1087,7 +1127,12 @@
+     } else if (arg1 < -0.1f) {
+         arg1 = -0.1f;
+     }
++#ifdef WINGS64_XBOX
++    // DIVERGES: frame rate (patches/045): per N64 frame (visual)
++    jhData->unk5CC += arg1 * 25.0f * wx_rate_scale();
++#else
+     jhData->unk5CC += arg1 * 25.0f;
++#endif
+ 
+     if (jhData->unk5CC > 15.0f) {
+         jhData->unk5CC = 15.0f;
+@@ -1105,7 +1150,12 @@
+     } else if (arg1 < -0.1f) {
+         arg1 = -0.1f;
+     }
++#ifdef WINGS64_XBOX
++    // DIVERGES: frame rate (patches/045): per N64 frame (visual)
++    jhData->unk5D4 += arg1 * 25.0f * wx_rate_scale();
++#else
+     jhData->unk5D4 += arg1 * 25.0f;
++#endif
+ 
+     if (jhData->unk5D4 > 15.0f) {
+         jhData->unk5D4 = 15.0f;
+@@ -1128,19 +1178,39 @@
+     }
+ 
+     if (jhData->unk57C == 3) {
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/045): per N64 frame (visual)
++        jhData->unk574 *= wx_rate_decay(0.99f * jhData->unk578);
++#else
+         jhData->unk574 *= 0.99f * jhData->unk578;
++#endif
+         temp_fv1 = 145.0f;
+         jhData->unk5CC = (uvCosF(jhData->unk570 * 0.0174533f) * (temp_fv1 * 0.5f) * jhData->unk574) + (-55.0f + (temp_fv1 * 0.5f));
+     } else if (jhData->unk57C == 2) {
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/045): per N64 frame (visual)
++        jhData->unk574 *= wx_rate_decay(0.99f * jhData->unk578);
++#else
+         jhData->unk574 *= 0.99f * jhData->unk578;
++#endif
+         temp_fv1 = 110.0f;
+         jhData->unk5CC = (uvCosF(jhData->unk570 * 0.0174533f) * (temp_fv1 * 0.5f) * jhData->unk574) + (-55.0f + (temp_fv1 * 0.5f));
+     } else if (jhData->unk57C == 1) {
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/045): per N64 frame (visual)
++        jhData->unk574 *= wx_rate_decay(0.985f * jhData->unk578);
++#else
+         jhData->unk574 *= 0.985f * jhData->unk578;
++#endif
+         temp_fv1 = 80.0f;
+         jhData->unk5CC = (uvCosF(jhData->unk570 * 0.0174533f) * (temp_fv1 * 0.5f) * jhData->unk574) + (-45.0f + (temp_fv1 * 0.5f));
+     } else {
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/045): per N64 frame (visual)
++        jhData->unk574 *= wx_rate_decay(0.985f * jhData->unk578);
++#else
+         jhData->unk574 *= 0.985f * jhData->unk578;
++#endif
+         temp_fv1 = 45.0f;
+         jhData->unk5CC = (uvCosF(jhData->unk570 * 0.0174533f) * (temp_fv1 * 0.5f) * jhData->unk574) + (-30.0f + (temp_fv1 * 0.5f));
+     }
+@@ -1172,19 +1242,39 @@
+     }
+ 
+     if (jhData->unk58C == 3) {
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/045): per N64 frame (visual)
++        jhData->unk584 *= wx_rate_decay(0.99f * jhData->unk588);
++#else
+         jhData->unk584 *= 0.99f * jhData->unk588;
++#endif
+         temp_fv1 = 145.0f;
+         jhData->unk5D4 = (uvCosF(jhData->unk580 * 0.0174533f) * (temp_fv1 * 0.5f) * jhData->unk584) + (-55.0f + (temp_fv1 * 0.5f));
+     } else if (jhData->unk58C == 2) {
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/045): per N64 frame (visual)
++        jhData->unk584 *= wx_rate_decay(0.99f * jhData->unk588);
++#else
+         jhData->unk584 *= 0.99f * jhData->unk588;
++#endif
+         temp_fv1 = 110.0f;
+         jhData->unk5D4 = (uvCosF(jhData->unk580 * 0.0174533f) * (temp_fv1 * 0.5f) * jhData->unk584) + (-55.0f + (temp_fv1 * 0.5f));
+     } else if (jhData->unk58C == 1) {
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/045): per N64 frame (visual)
++        jhData->unk584 *= wx_rate_decay(0.985f * jhData->unk588);
++#else
+         jhData->unk584 *= 0.985f * jhData->unk588;
++#endif
+         temp_fv1 = 80.0f;
+         jhData->unk5D4 = (uvCosF(jhData->unk580 * 0.0174533f) * (temp_fv1 * 0.5f) * jhData->unk584) + (-45.0f + (temp_fv1 * 0.5f));
+     } else {
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/045): per N64 frame (visual)
++        jhData->unk584 *= wx_rate_decay(0.985f * jhData->unk588);
++#else
+         jhData->unk584 *= 0.985f * jhData->unk588;
++#endif
+         temp_fv1 = 45.0f;
+         jhData->unk5D4 = (uvCosF(jhData->unk580 * 0.0174533f) * (temp_fv1 * 0.5f) * jhData->unk584) + (-30.0f + (temp_fv1 * 0.5f));
+     }
+--- a/src/app/camera.c
++++ b/src/app/camera.c
+@@ -11,6 +11,9 @@
+ #include "demo.h"
+ #include "environment.h"
+ #include "task.h"
++#ifdef WINGS64_XBOX
++#include <wings64_rate.h>
++#endif
+ 
+ // TODO: Unk802D472C_SP60 needs to be merged with some combination of Unk802D3658_Unk1224/8
+ typedef struct {
+@@ -245,11 +248,21 @@
+             var_fv0 = -camera->unk1378;
+         }
+         temp_fv1_2 = camera->unk1380;
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/045): the Jumble Hopper camera's elevation moves at
++        // most 3 degrees a frame: per N64 frame instead.
++        if ((var_fv0 - temp_fv1_2) > 3.0f * wx_rate_scale()) {
++            var_fv0 = temp_fv1_2 + 3.0f * wx_rate_scale();
++        } else if ((temp_fv1_2 - var_fv0) > 3.0f * wx_rate_scale()) {
++            var_fv0 = temp_fv1_2 - 3.0f * wx_rate_scale();
++        }
++#else
+         if ((var_fv0 - temp_fv1_2) > 3.0f) {
+             var_fv0 = temp_fv1_2 + 3.0f;
+         } else if ((temp_fv1_2 - var_fv0) > 3.0f) {
+             var_fv0 = temp_fv1_2 - 3.0f;
+         }
++#endif
+         camera->unk1380 = var_fv0;
+         spA4.z = (-uvSinF(var_fv0 * 0.0174533f) * camera->unk1374) + spBC.z; // almost DEG_TO_RAD(1)
+         temp_fa1 = spA4.z - spBC.z;
+@@ -955,8 +968,17 @@
+     uvMat4UnkOp6(&camera->unk108, &camera->unk80, &sp48);
+     temp_v0 = camera_802D472C(camera, &sp48);
+     if (temp_v0 != 0) {
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/045): the fly-by camera rose 2 a frame while occluded: per N64 frame
++        camera->unk210.z += 2.0f * wx_rate_scale();
++#else
+         camera->unk210.z += 2.0f;
++#endif
++#ifdef WINGS64_XBOX
++        sp48.m[3][2] += 2.0f * wx_rate_scale();
++#else
+         sp48.m[3][2] += 2.0f;
++#endif
+         uvMat4UnkOp6(&camera->unk108, &camera->unk80, &sp48);
+     }
+ }
+--- a/src/app/ski_lift.c
++++ b/src/app/ski_lift.c
+@@ -4,6 +4,9 @@
+ #include "proxanim.h"
+ #include "ski_lift.h"
+ #include "spath.h"
++#ifdef WINGS64_XBOX
++#include <wings64_rate.h>
++#endif
+ 
+ typedef struct {
+     s32 objId;
+@@ -21,7 +24,12 @@
+ 
+     for (i = 0; i < ARRAY_COUNT(sSkiLift); i++) {
+         if (sSkiLift[i].objId != 0xFFFF) {
++#ifdef WINGS64_XBOX
++            // DIVERGES: frame rate (patches/045): the chairs moved 0.03 a frame: per N64 frame
++            sSkiLift[i].interval += 0.03f * wx_rate_scale();
++#else
+             sSkiLift[i].interval += 0.03f;
++#endif
+             if (sSkiLift[i].interval >= 100.0f) {
+                 sSkiLift[i].interval -= 100.0f;
+             }
+--- a/src/app/shuttle.c
++++ b/src/app/shuttle.c
+@@ -12,6 +12,9 @@
+ #include <uv_matrix.h>
+ #include <uv_model.h>
+ #include <uv_vector.h>
++#ifdef WINGS64_XBOX
++#include <wings64_rate.h>
++#endif
+ 
+ f32 pad_D_80350480[] = { 0.0f, 0.0f, 1.0f, 0.0f };
+ s32 D_80350490 = 0;
+@@ -307,9 +310,19 @@
+ STATIC_FUNC void shuttle_803358D4(void) {
+     if (sShuttleState == SHUTTLE_STATE_2) {
+         sShuttleThrust += D_8034F854 * 0.5f;
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/045): the shuttle climbed `thrust` a frame (thrust grows with dt): per N64 frame
++        sShuttleAltitude += sShuttleThrust * wx_rate_scale();
++#else
+         sShuttleAltitude += sShuttleThrust;
++#endif
+         if (D_803504A0 > 0.0f) {
++#ifdef WINGS64_XBOX
++            // DIVERGES: frame rate (patches/045): per N64 frame
++            D_803504A0 -= 5.0f * wx_rate_scale();
++#else
+             D_803504A0 -= 5.0f;
++#endif
+         } else {
+             D_803504A0 = 0.0f;
+         }
+@@ -323,7 +336,12 @@
+         shuttle_80334CCC();
+     } else if (sShuttleState == SHUTTLE_STATE_1) {
+         sShuttleFlightTime += D_8034F854;
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/045): per N64 frame
++        D_803504A0 += 5.0f * wx_rate_scale();
++#else
+         D_803504A0 += 5.0f;
++#endif
+         if (sShuttleFlightTime > 7.0) {
+             sShuttleState = SHUTTLE_STATE_2;
+         }
+--- a/src/app/splash.c
++++ b/src/app/splash.c
+@@ -7,6 +7,9 @@
+ #include "demo.h"
+ #include "uv_vector.h"
+ #include "splash.h"
++#ifdef WINGS64_XBOX
++#include <wings64_rate.h>
++#endif
+ 
+ typedef struct {
+     Mtx4F unk0;
+@@ -73,8 +76,17 @@
+     for (i = 0; i < ARRAY_COUNT(sSplashRipples); i++) {
+         ripple = &sSplashRipples[i];
+         if (ripple->active) {
++#ifdef WINGS64_XBOX
++            // DIVERGES: frame rate (patches/045): ripple fade and growth were per frame: per N64 frame
++            ripple->fade -= 0.02f * wx_rate_scale();
++#else
+             ripple->fade -= 0.02f;
++#endif
++#ifdef WINGS64_XBOX
++            ripple->curSize += 0.01f * wx_rate_scale();
++#else
+             ripple->curSize += 0.01f;
++#endif
+             if ((ripple->fade < 0.0) || (ripple->curSize > 1.0)) {
+                 ripple->active = FALSE;
+             } else {
+--- a/src/app/falco.c
++++ b/src/app/falco.c
+@@ -17,6 +17,9 @@
+ #include "splash.h"
+ #include "task.h"
+ #include "text_data.h"
++#ifdef WINGS64_XBOX
++#include <wings64_rate.h>
++#endif
+ 
+ // .bss
+ f32 D_8035AF30;
+@@ -780,9 +783,19 @@
+             var_fv0 = 1.0f;
+             break;
+         }
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/045): the low-pass 0.8 x + 0.2 target was per frame: per N64 frame
++        falco->unkCC = var_fv0 + (falco->unkCC - var_fv0) * wx_rate_decay(0.8f);
++#else
+         falco->unkCC = (0.2f * var_fv0) + (0.8f * falco->unkCC);
++#endif
+     } else {
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/045): 0.8 x + 5.526 is a low-pass toward 5.526 / 0.2: per N64 frame
++        falco->unkCC = (5.526f / 0.2f) + (falco->unkCC - (5.526f / 0.2f)) * wx_rate_decay(0.8f);
++#else
+         falco->unkCC = (falco->unkCC * 0.8f) + 5.526f;
++#endif
+     }
+     sp48.f[0] = falco->unk16C.m[3][0];
+     sp48.f[1] = falco->unk16C.m[3][1];
+--- a/src/app/env_sound.c
++++ b/src/app/env_sound.c
+@@ -16,6 +16,9 @@
+ #include "shadow.h"
+ #include "shuttle.h"
+ #include "snd.h"
++#ifdef WINGS64_XBOX
++#include <wings64_rate.h>
++#endif
+ 
+ typedef struct {
+     f32 unk0;
+@@ -242,7 +245,12 @@
+         for (i = 0; i < esState->count; i++) {
+             emitter = &esState->emitters[i];
+             if (D_8034EF20 != 0) {
++#ifdef WINGS64_XBOX
++                // DIVERGES: frame rate (patches/045): the emitters' fade vol *= 0.95 ran every game frame: per N64 frame
++                uvEmitterSetVol(emitter->emitterId, uvEmitterGetVol(emitter->emitterId) * wx_rate_decay(0.95f));
++#else
+                 uvEmitterSetVol(emitter->emitterId, uvEmitterGetVol(emitter->emitterId) * 0.95f);
++#endif
+             } else {
+                 if ((sp26C == emitter->unk6) || (emitter->unk6 == 0xA)) {
+                     switch (emitter->sndId) {
+--- a/src/app/code_AE460.c
++++ b/src/app/code_AE460.c
+@@ -11,6 +11,9 @@
+ #include "app/shadow.h"
+ #include "app/snd.h"
+ #include "app/code_7FE00.h"
++#ifdef WINGS64_XBOX
++#include <wings64_rate.h>
++#endif
+ 
+ Unk80371120 D_80371120;
+ Unk80371120 D_803712D0;
+@@ -245,7 +248,12 @@
+     } else {
+         sp74 = ((1.0f - (demoRandF() * 0.7f)) + 0.7f + (0.5f * SQ(0.5f * (rbData->unk70 + 1.0f)))) * (0.6f * rbData->unk78);
+     }
++#ifdef WINGS64_XBOX
++    // DIVERGES: frame rate (patches/045): the jet flame turned 1.5 * sp74 a frame: per N64 frame
++    D_8034FBA8 += 1.5f * sp74 * wx_rate_scale();
++#else
+     D_8034FBA8 += 1.5f * sp74;
++#endif
+     uvFxProps(rbData->unk338, 3, sp74, sp74, sp74, 0);
+     uvMat4RotateAxis(&spF8, -D_8034FBA8, 'z');
+     if (rbData->unk80 == 0) {
+--- a/src/app/hud.c
++++ b/src/app/hud.c
+@@ -1207,13 +1207,23 @@
+ 
+         temp_fv0_3 = radar->waypoints[idx].z - heading;
+         if (radar->waypoints[idx].unk14 > 0) {
++#ifdef WINGS64_XBOX
++            // DIVERGES: frame rate (patches/045): the waypoint blink stepped its alpha 50 a frame: per N64 frame
++            radar->waypoints[idx].unk18 -= (s32)(50.0f * wx_rate_scale() + 0.5f);
++#else
+             radar->waypoints[idx].unk18 -= 50;
++#endif
+             if (radar->waypoints[idx].unk18 < 0) {
+                 radar->waypoints[idx].unk14 = -1;
+                 radar->waypoints[idx].unk18 = 0;
+             }
+         } else if (radar->waypoints[idx].unk14 < 0) {
++#ifdef WINGS64_XBOX
++            // DIVERGES: frame rate (patches/045): per N64 frame
++            radar->waypoints[idx].unk18 += (s32)(50.0f * wx_rate_scale() + 0.5f);
++#else
+             radar->waypoints[idx].unk18 += 50;
++#endif
+             if (radar->waypoints[idx].unk18 > 0xFF) {
+                 radar->waypoints[idx].unk14 = 1;
+                 radar->waypoints[idx].unk18 = 0xFF;

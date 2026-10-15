@@ -10,8 +10,11 @@
 #include <ultra64.h>
 #include <string.h>
 
+#include "app/code_9A960.h"
 #include "app/game.h"
 #include <wings64_widescreen.h>
+#include "app/hud.h"
+#include <wings64_rate.h>
 #include "wx_game.h"
 #include "xgfx.h"
 #include "xhw.h"
@@ -38,6 +41,28 @@ static const char* const k_states[] = { "title", "1", "test details", "pilot sel
 
 u32 wx_vi_retraces(void);
 u32 wx_gfx_tasks(void);
+
+/* Test builds: a [RATE] line a second in flight and the results (and at
+ * every state change), for the 30/60 comparisons of PLAN.md M5: the ACPI
+ * clock, the game's own time (D_8034F850) and frame time (D_8034F854), the
+ * rate scale (wings64_rate.h), the HUD's test timer, altitude and speed,
+ * retraces and frames. Read from this thread without a lock: a sample, not a
+ * snapshot. Thousandths as integers (pdclib's printf has no %f). */
+static int milli(float f) { return (int)(f * 1000.0f + (f < 0.0f ? -0.5f : 0.5f)); }
+
+static void rate_log(int st, int changed) {
+    HUDState* hud;
+    if (!XHW_TEST_BUILD || (!changed && st != GAME_STATE_TEST_UPDATE && st != GAME_STATE_RESULTS && st != GAME_STATE_DEMO_PILOT)) return;
+    if (D_80362690 == NULL) return;
+    hud = hudGetState();
+    xhw_logf("[RATE] state %d, wall %u ms, game time %d ms, dt %d us, scale %d/1000, timer %d ms, altitude %d mm, "
+             "speed %d/1000, pos %d %d %d mm, retrace %u, frames %u, fps mode %d",
+             st, (unsigned)(xhw_time_us() / 1000u), milli(D_8034F850), (int)(D_8034F854 * 1000000.0f + 0.5f),
+             milli(wx_rate_scale_v), hud ? milli(hud->elapsedTime) : -1, hud ? milli(hud->altitude) : -1,
+             hud ? milli(hud->speed) : -1, milli(D_80362690->unkC[0].unk2C.m[3][0]),
+             milli(D_80362690->unkC[0].unk2C.m[3][1]), milli(D_80362690->unkC[0].unk2C.m[3][2]),
+             (unsigned)wx_vi_retraces(), (unsigned)wx_gfx_tasks(), g_wx_settings.fps_mode);
+}
 
 void wx_boot(const uint8_t* rom, uint32_t size) {
     int last = -2;
@@ -78,6 +103,9 @@ void wx_boot(const uint8_t* rom, uint32_t size) {
                      st >= 0 && st < (int)(sizeof k_states / sizeof k_states[0]) ? k_states[st] : "?", ms,
                      (unsigned)wx_vi_retraces(), (unsigned)wx_gfx_tasks());
             last = st;
+            rate_log(st, 1);
+        } else if (ms % 1000 == 0) {
+            rate_log(st, 0);
         }
     }
 }

@@ -8,6 +8,7 @@
  *
  *   [video]  output = auto|480i|480p|720p|1080i   progressive = 0|1
  *            widescreen = auto|on|off   video_confirmed = <mode>   fps = 0|1
+ *            fps_mode = 60|30 (the frame rate; PLAN.md M5)
  *   [system] screenshots = 0|1
  *   [input]  stick_deadzone = 0..60 (percent, steps of 5)
  *
@@ -40,6 +41,15 @@
 #define XHW_FPS_DEFAULT XHW_TEST_BUILD
 #endif
 
+/* [video] fps_mode = 60|30 (the panel's "Frame rate" row, PLAN.md M5): the
+ * game draws up to 60 frames a second, or at most 30 as on the N64.
+ * Applied at once (os_shim.c vi_thread reads it every retrace). The rate
+ * patches (038-045, wings64_rate.h) keep the game's per-frame behaviour the
+ * N64's at either. -DWX_FPS_MODE_DEFAULT=30 changes the default. */
+#ifndef WX_FPS_MODE_DEFAULT
+#define WX_FPS_MODE_DEFAULT 60
+#endif
+
 WxSettings g_wx_settings;
 
 static void defaults(WxSettings* s) {
@@ -52,6 +62,7 @@ static void defaults(WxSettings* s) {
     s->stick_deadzone = 20;
     s->tex_filter = 0;
     s->rumble = 1;
+    s->fps_mode = WX_FPS_MODE_DEFAULT == 30 ? 30 : 60;
 }
 
 static const char* const k_out[] = { "auto", "480i", "480p", "720p", "1080i" };
@@ -91,6 +102,7 @@ static void parse(WxSettings* s, char* text) {
             else if (!strcmp(k, "widescreen")) s->widescreen = pick(v, k_ws, 3, 2);
             else if (!strcmp(k, "video_confirmed")) snprintf(s->video_confirmed, sizeof s->video_confirmed, "%s", v);
             else if (!strcmp(k, "fps")) s->fps = atoi(v) != 0;
+            else if (!strcmp(k, "fps_mode")) s->fps_mode = atoi(v) == 30 ? 30 : 60;
             else if (!strcmp(k, "screenshots")) s->screenshots = atoi(v) != 0;
             else if (!strcmp(k, "texture_filter")) s->tex_filter = pick(v, k_filter, 3, 0) == 1;
             else if (!strcmp(k, "rumble")) s->rumble = atoi(v) != 0;
@@ -109,12 +121,12 @@ int wx_settings_save(void) {
     int n = snprintf(buf, sizeof buf,
                      "; Wings64-X settings (docs/platform.md)\r\n"
                      "[video]\r\noutput = %s\r\nprogressive = %d\r\nwidescreen = %s\r\nvideo_confirmed = %s\r\nfps = %d\r\n"
-                     "texture_filter = %s\r\n"
+                     "fps_mode = %d\r\ntexture_filter = %s\r\n"
                      "[system]\r\nscreenshots = %d\r\n"
                      "[input]\r\nstick_deadzone = %d\r\nrumble = %d\r\n"
                      "; end of settings\r\n",
                      k_out[s->output], s->progressive, k_ws[s->widescreen], s->video_confirmed, s->fps,
-                     k_filter[s->tex_filter ? 1 : 0], s->screenshots, s->stick_deadzone, s->rumble);
+                     s->fps_mode, k_filter[s->tex_filter ? 1 : 0], s->screenshots, s->stick_deadzone, s->rumble);
     snprintf(p, sizeof p, "%ssettings.ini", xhw_save_dir());
     if (!xhw_write_file_atomic(p, buf, (uint32_t)n)) {
         xhw_logf("[SETTINGS] could not write %s", p);
@@ -157,6 +169,16 @@ void wx_settings_load(void) {
         write = 1;
         xhw_log("[SETTINGS] no settings.ini: defaults written");
     }
+#if defined(XHW_AUTOPAD) && XHW_AUTOPAD
+    {   /* test builds: "env MX_FPS_MODE=30|60" from the autopad script, over
+         * settings.ini for this boot (not saved): the 30/60 comparisons */
+        const char* e = getenv("MX_FPS_MODE");
+        if (e) {
+            g_wx_settings.fps_mode = atoi(e) == 30 ? 30 : 60;
+            xhw_logf("[SETTINGS] MX_FPS_MODE=%s", e);
+        }
+    }
+#endif
     if (back_held()) {
         xhw_log("[SETTINGS] BACK held at boot: 480i 4:3 (saved)");
         g_wx_settings.output = XHW_OUT_480I;
@@ -173,9 +195,10 @@ void wx_settings_load(void) {
         }
     }
 #endif
-    xhw_logf("[SETTINGS] output %s, progressive %d, widescreen %s, fps %d, screenshots %d, stick dead zone %d%%",
+    xhw_logf("[SETTINGS] output %s, progressive %d, widescreen %s, fps %d, frame rate %d, screenshots %d, stick dead "
+             "zone %d%%",
              k_out[g_wx_settings.output], g_wx_settings.progressive, k_ws[g_wx_settings.widescreen], g_wx_settings.fps,
-             g_wx_settings.screenshots, g_wx_settings.stick_deadzone);
+             g_wx_settings.fps_mode, g_wx_settings.screenshots, g_wx_settings.stick_deadzone);
     if (write) wx_settings_save();
 }
 

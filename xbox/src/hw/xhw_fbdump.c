@@ -11,7 +11,7 @@
  * Off unless built with -DXHW_FBDUMP_EVERY=N (every N presents).
  *
  * On the console there is no COM1: BACK on any controller, and an autopad
- * script's SHOT, write the next frame to E:\UDATA\4d580001\shotNN.bmp
+ * script's SHOT, write the next frame to E:\UDATA\57580001\shotNN.bmp
  * instead (xhw_fbdump_file; shot_<folder>_NN.bmp in a console round's
  * chained builds), fetched over FTP with the logs. */
 #include <stdio.h>

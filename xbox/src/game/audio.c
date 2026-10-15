@@ -64,6 +64,7 @@ void wx_audio_task(void* task) {
         xhw_logf("[AUDIO] task %u: %u commands at %p", s_tasks, (unsigned)(t->t.data_size / 8u), t->t.data_ptr);
     asp_hle_run((const uint32_t*)t->t.data_ptr, t->t.data_size / 8u, asp_addr, NULL);
     s_task_us += xhw_time_us() - t0;
+    xhw_perf_add(XHW_PERF_AUDIO, xhw_time_us() - t0);
     if (XHW_TEST_BUILD && s_tasks <= 3)
         xhw_logf("[AUDIO] task %u done in %u us", s_tasks, (unsigned)(xhw_time_us() - t0));
     s_tasks_iv++;

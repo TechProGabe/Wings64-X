@@ -305,7 +305,7 @@ static int gpu_quiet(void) {
 static int gpu_busy(void) { return !gpu_quiet() || !gpu_quiet(); }
 
 static void wait_idle(void) {
-    uint64_t t0 = 0;
+    uint64_t t0 = 0, w0 = xhw_time_us();
     int reported = 0;
     s_st_waits++;
     pb_close();
@@ -317,6 +317,7 @@ static void wait_idle(void) {
             reported = 1;
         }
     }
+    if (t0) xhw_perf_add(XHW_PERF_WAIT, xhw_time_us() - w0);
 }
 
 static uint32_t pb_used(void) {
@@ -784,6 +785,7 @@ void xgfx_present(void) {
         /* never draw into the buffer being scanned out (OpenCrossing traps.md);
          * the waits depend on pbkit's vblank DPC, so they are timed */
         int guard = 4, warned = 0, idle_vbls;
+        uint64_t flip_w0;
         uint64_t t0 = 0;
         pb_close();   /* pb_finished pushes the flip at pb_Put: close this frame's tail first (Melee-X v1 hang) */
         probe_note_present((uint32_t)pb_back_buffer() & 0x03FFFFFFu, s_frame + 1);
@@ -806,6 +808,7 @@ void xgfx_present(void) {
         warned = 0;
         idle_vbls = 0;
         s_flip_waiting = 1;
+        flip_w0 = xhw_time_us();
         while ((PCRTC_START_REG & 0x03FFFFFF) == ((uint32_t)pb_back_buffer() & 0x03FFFFFF)) {
             DWORD vbl = pb_get_vbl_counter();
             int ms;
@@ -838,9 +841,11 @@ void xgfx_present(void) {
             for (ms = 0; ms < 50 && pb_get_vbl_counter() == vbl; ms++) xhw_sleep_ms(1);
             s_st_flip_waits++;
         }
+        if (t0) xhw_perf_add(XHW_PERF_WAIT, xhw_time_us() - flip_w0);
     }
     s_flip_waiting = 0;
     xhw_note_present();
+    xhw_perf_frame();
     {   /* frames that drew almost nothing: a black frame on screen */
         static uint32_t s_thin, s_thin_logged;
         if (s_draws < 3) s_thin++;

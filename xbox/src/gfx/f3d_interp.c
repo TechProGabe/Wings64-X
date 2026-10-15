@@ -422,6 +422,7 @@ static TexEntry* texture_for_tile(int tidx) {
     /* RGBA32 splits each texel across TMEM's two banks: SETTILE's line covers half a row */
     unsigned line = t->line * 8u * (t->siz == 3 ? 2u : 1u), bytes, pw, ph, slot, i;
     uint32_t key, sample;
+    uint64_t tex_t0;
     TexEntry* e;
     if (!ld->valid || t->line == 0) { tex_miss("no load", tidx); return NULL; }
     if (t->masks && (1u << t->masks) < w) w = 1u << t->masks;
@@ -456,6 +457,7 @@ static TexEntry* texture_for_tile(int tidx) {
         }
         e = tex_evict_slot(pick);
     }
+    tex_t0 = xhw_time_us();
     if (ld->tile) {   /* LOADTILE: the rectangle's rows, laid out at the tile's line */
         const uint8_t* src = (const uint8_t*)ram(ld->addr);
         unsigned r, n = ld->row_bytes < line ? ld->row_bytes : line;
@@ -491,6 +493,7 @@ static TexEntry* texture_for_tile(int tidx) {
     e->h = (uint16_t)h;
     e->pw = (uint16_t)pw;
     e->ph = (uint16_t)ph;
+    xhw_perf_add(XHW_PERF_TEX, xhw_time_us() - tex_t0);
 hit:
     e->frame = s_frame_no;
 #if XGFX_TEX_MEMO
@@ -1313,8 +1316,13 @@ void f3d_run(const void* dl) {
         xgfx_clear(cx + cw - m, m, cx + cw, ch - m, 0xFF000000u, 1, 0, 1.0f);
     }
     wx_frame_overlay();   /* the port's own text (FPS counter, settings panel; patches/021) */
-    s_dl_us += xhw_time_us() - t0;
-    xgfx_present();
+    {
+        uint64_t t1 = xhw_time_us();
+        s_dl_us += t1 - t0;
+        xhw_perf_add(XHW_PERF_DL, t1 - t0);
+        xgfx_present();
+        xhw_perf_add(XHW_PERF_PRESENT, xhw_time_us() - t1);
+    }
     if (s_frames % 600 == 0)
         xhw_logf("[GFX] frame %u state %d: tris %u, rejected %u, culled %u, clipped %u | vtx loads %u, mtx %u",
                  s_frames, wx_game_state(), s_t_in, s_t_rej, s_t_cull, s_t_clip, s_vtx_loads, s_mtx_loads);

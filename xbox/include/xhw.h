@@ -160,6 +160,15 @@ int xhw_shot_take(void);             /* 0 none, 1 BMP to E:, 2 [FBDUMP] to COM1 
 int xhw_running_in_xemu(void);
 
 /* ---- system ---- */
+/* ---- frame profile: a [PERF] line every 5 s (xhw_perf.c) ----
+ * Coarse sections timed on the ACPI clock, added from any thread. DL and
+ * PRESENT are whole sections; TEX is the part of DL spent converting and
+ * uploading textures, WAIT the part of PRESENT (and of the next frame's
+ * start) spent waiting for the GPU or the flip. */
+enum { XHW_PERF_DL, XHW_PERF_TEX, XHW_PERF_PRESENT, XHW_PERF_WAIT, XHW_PERF_AUDIO, XHW_PERF_N };
+void xhw_perf_add(int bucket, uint64_t us);
+void xhw_perf_frame(void);   /* once per presented frame (nv2a.c) */
+
 /* ---- audio: the AI output, s16 stereo (xhw_audio.c, Melee-X's driver) ---- */
 int xhw_audio_init(uint32_t rate);            /* 1: AC97 or the xemu APU voice runs */
 void xhw_audio_set_rate(uint32_t rate);       /* osAiSetFrequency */

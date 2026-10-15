@@ -26,9 +26,11 @@
  *  - leaving fades out with func_8032D51C(0) like the Option screen, and the
  *    title comes back without the intro (game.c's GAME_STATE_OPTIONS path).
  *
- * Rows (PLAN.md 3.4, what the port has today): Resolution, the video output (restart: `*`),
- * FPS counter, Screenshots (test builds), Stick dead zone with the raw
- * stick's tilt next to it, Save and restart, Return. Widescreen and Buttons
+ * Pages (k_pages): "Port settings" is Video >, Controls >, System > and Return;
+ * Video: Resolution (restart: `*`), Anti-aliasing (`*`), Texture filter, FPS
+ * counter; Controls: Stick dead zone with the raw stick's tilt next to it,
+ * Rumble; System: Screenshots (test builds), Save and restart. Each sub-menu
+ * ends in Return (B does the same), which goes back up one level. Widescreen and Buttons
  * come with their features (M7 widescreen, remapping). settings.ini is
  * written on leaving when something changed (settings.c).
  *
@@ -250,7 +252,27 @@ static void out_text(char* buf, int out) {
 
 /* ------------------------------------------------------------------ the panel */
 
-enum { ROW_VIDEO, ROW_FPS, ROW_SHOTS, ROW_DEADZONE, ROW_RESTART, ROW_RETURN, ROW_FILTER, ROW_AA, ROW_RUMBLE };
+enum { ROW_VIDEO, ROW_FPS, ROW_SHOTS, ROW_DEADZONE, ROW_RESTART, ROW_RETURN, ROW_FILTER, ROW_AA, ROW_RUMBLE,
+       ROW_PAGE_VIDEO, ROW_PAGE_CONTROLS, ROW_PAGE_SYSTEM };
+
+/* The panel is a top level ("Port settings") and three sub-menus. A page is
+   a table of row kinds: adding a row to a page is one line in its table
+   (a new kind also needs its label, value and change cases below). Every
+   page ends with ROW_RETURN: "back" in a sub-menu, "leave" at the top.
+   ROW_SHOTS is dropped from the page outside test builds. */
+enum { PAGE_TOP, PAGE_VIDEO, PAGE_CONTROLS, PAGE_SYSTEM, PAGE_COUNT };
+
+static const s32 k_page_top[]      = { ROW_PAGE_VIDEO, ROW_PAGE_CONTROLS, ROW_PAGE_SYSTEM, ROW_RETURN };
+static const s32 k_page_video[]    = { ROW_VIDEO, ROW_AA, ROW_FILTER, ROW_FPS, ROW_RETURN };
+static const s32 k_page_controls[] = { ROW_DEADZONE, ROW_RUMBLE, ROW_RETURN };
+static const s32 k_page_system[]   = { ROW_SHOTS, ROW_RESTART, ROW_RETURN };
+
+static const struct { const s32* rows; s32 count; } k_pages[PAGE_COUNT] = {
+    { k_page_top,      ARRAY_COUNT(k_page_top) },
+    { k_page_video,    ARRAY_COUNT(k_page_video) },
+    { k_page_controls, ARRAY_COUNT(k_page_controls) },
+    { k_page_system,   ARRAY_COUNT(k_page_system) },
+};
 
 static const char* const k_filter_names[] = { "N64", "Smooth", "Sharp" };
 static const char* const k_aa_names[] = { "Off", "2x", "4x" };
@@ -263,6 +285,7 @@ static const char* const k_aa_names[] = { "Off", "2x", "4x" };
 #define REPEAT_FIRST 24   /* retraces held before the dead zone repeats */
 #define REPEAT_EVERY 6
 
+static s32 sPage;
 static s32 sPanelRowKind[MAX_ROWS];
 static s32 sPanelCount;
 static s16 sRowText[MAX_ROWS][ROW_CAP];
@@ -280,6 +303,12 @@ static u32 sHeldSince, sHeldLast;
 
 static const char* row_label(s32 kind) {
     switch (kind) {
+    case ROW_PAGE_VIDEO:
+        return "Video >";   /* font 6 draws '>' as a double chevron: the sub-menu marker */
+    case ROW_PAGE_CONTROLS:
+        return "Controls >";
+    case ROW_PAGE_SYSTEM:
+        return "System >";
     case ROW_VIDEO:
         return "Resolution *";
     case ROW_FILTER:
@@ -360,21 +389,18 @@ static void panel_draw_item(s16 x, s16 y, s16 idx) {
     if (t != NULL) uvFontPrintStr16(x, y, t, 100, 0xFFE);
 }
 
-static void panel_init(void) {
+/* (re)build the rows of a page and put the cursor on `cursor` */
+static void panel_open_page(s32 page, s32 cursor) {
     s16 tmp[ROW_CAP];
     s32 i, w, wmax;
 
-    settings_boot_values();
+    sPage = page;
     sPanelCount = 0;
-    sPanelRowKind[sPanelCount++] = ROW_VIDEO;
-    sPanelRowKind[sPanelCount++] = ROW_AA;
-    sPanelRowKind[sPanelCount++] = ROW_FILTER;
-    sPanelRowKind[sPanelCount++] = ROW_RUMBLE;
-    sPanelRowKind[sPanelCount++] = ROW_FPS;
-    if (XHW_TEST_BUILD) sPanelRowKind[sPanelCount++] = ROW_SHOTS;   /* PLAN.md 3.4: test builds only */
-    sPanelRowKind[sPanelCount++] = ROW_DEADZONE;
-    sPanelRowKind[sPanelCount++] = ROW_RESTART;
-    sPanelRowKind[sPanelCount++] = ROW_RETURN;
+    for (i = 0; i < k_pages[page].count; i++) {
+        s32 kind = k_pages[page].rows[i];
+        if (kind == ROW_SHOTS && !XHW_TEST_BUILD) continue;   /* PLAN.md 3.4: test builds only */
+        sPanelRowKind[sPanelCount++] = kind;
+    }
     sReturnText = textGetDataByIdx(TEXT_QUIT);
 
     /* optionsInitMain centres 3 rows at y 100; one row is 17 px */
@@ -385,25 +411,35 @@ static void panel_init(void) {
     /* the value column clears the longest label of the rows that have values */
     wmax = 0;
     for (i = 0; i < sPanelCount; i++) {
-        if (sPanelRowKind[i] == ROW_RESTART || sPanelRowKind[i] == ROW_RETURN) continue;
-        glyphs(tmp, 0, ROW_CAP, MENU_FONT, row_label(sPanelRowKind[i]));
+        s32 kind = sPanelRowKind[i];
+        if (kind == ROW_RESTART || kind == ROW_RETURN || kind == ROW_PAGE_VIDEO || kind == ROW_PAGE_CONTROLS ||
+            kind == ROW_PAGE_SYSTEM) {
+            continue;
+        }
+        glyphs(tmp, 0, ROW_CAP, MENU_FONT, row_label(kind));
         w = uvFontStr16Width(tmp);
         if (w > wmax) wmax = w;
     }
     sValueX = sPanelTextX + wmax + 10;
     glyphs(tmp, 0, ROW_CAP, MENU_FONT, "60");
     sReadoutX = sValueX + uvFontStr16Width(tmp) + 12;
-    glyphs(sLegend, 0, ROW_CAP, MENU_FONT, "* After a restart");
-    glyphs(sAANote, 0, ROW_CAP, MENU_FONT, "Anti-aliasing: 480 only");
 
     menuUtilSetColors(MENU_COLOR_ITEM, 0xFF, 0xFF, 0xFF);
     menuUtilSetColors(MENU_COLOR_SELECTED, 0xFF, 0xFF, 0x00);
     for (i = 0; i < sPanelCount; i++) panel_set_row(i);
     menuUtilSetSoundFlags(MENU_SOUND_CHANGE | MENU_SOUND_BACK);   /* as the Sound panel: A is handled here */
-    sStickHeld = 0;
+    if (cursor > 0 && cursor < sPanelCount) menuUtilSetCurItem(cursor);
+    sStickHeld = 1;   /* a push that opened the page is not a value change */
     sHeldDir = 0;
+    xhw_logf("[SETTINGS] page %d: %d rows, value column x %d", (int)page, (int)sPanelCount, (int)sValueX);
+}
+
+static void panel_init(void) {
+    settings_boot_values();
+    glyphs(sLegend, 0, ROW_CAP, MENU_FONT, "* After a restart");
+    glyphs(sAANote, 0, ROW_CAP, MENU_FONT, "Anti-aliasing: 480 only");
+    panel_open_page(PAGE_TOP, 0);
     sDirty = 0;
-    xhw_logf("[SETTINGS] panel open: %d rows, value column x %d", (int)sPanelCount, (int)sValueX);
 }
 
 /* dir: +1 right / A, -1 left */
@@ -478,14 +514,28 @@ static s32 panel_update(void) {
 
     sel = menuUtilCheckInputs();
     cur = menuUtilGetCurItem();
-    if (sel == -1) {   /* B: saved, as Return */
+    if (sel == -1) {   /* B: back to the top level, or (there) saved, as Return */
+        if (sPage != PAGE_TOP) {
+            panel_open_page(PAGE_TOP, sPage - 1);
+            return -1;
+        }
         func_8032D51C(0);
         return 0;
     }
     if (sel >= 0) {
         switch (sPanelRowKind[sel]) {
+        case ROW_PAGE_VIDEO:
+        case ROW_PAGE_CONTROLS:
+        case ROW_PAGE_SYSTEM:
+            sndPlaySfx(SFX_UI_CONFIRM);
+            panel_open_page(PAGE_VIDEO + (sPanelRowKind[sel] - ROW_PAGE_VIDEO), 0);
+            break;
         case ROW_RETURN:
             sndPlaySfx(SFX_UI_CONFIRM);
+            if (sPage != PAGE_TOP) {
+                panel_open_page(PAGE_TOP, sPage - 1);
+                break;
+            }
             func_8032D51C(0);
             return 0;
         case ROW_RESTART:
@@ -554,6 +604,7 @@ static void panel_draw_legend(void) {
             return;
         }
     }
+    if (sPage != PAGE_VIDEO) return;   /* the `*` rows are on the Video page */
     if (restart_pending()) uvFontColor(0xFF, 0xFF, 0x00, 0xFF);
     else uvFontColor(0xFF, 0xFF, 0xFF, 0xFF);
     uvFontPrintStr16(sPanelTextX, sPanelY - 2 * (uvFontHeight() + 1), sLegend, 100, 0xFFE);

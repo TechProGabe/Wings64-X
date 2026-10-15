@@ -3,6 +3,17 @@
 Newest first. Each milestone entry says what was verified and how; "xemu"
 results are emulator-only (no timing, audio or memory claims from them).
 
+## Port settings in sub-menus (2026-10-15)
+
+Worktree branch off `port` (d9daf76); nothing pushed. The panel is now "Port settings" > Video >, Controls >,
+System >, Return (the `>` is font 6's double chevron). Video: Resolution *, Anti-aliasing *, Texture filter, FPS
+counter. Controls: Stick dead zone (live "Stick N"), Rumble. System: Screenshots (test builds), Save and restart.
+Each page is a row-kind table in `settings_menu.c` (`k_page_*`, `k_pages`): adding a row is one line there (plus
+its label/value/change cases). B or Return in a sub-menu goes back to the top level at once (cursor on that
+entry, no fade); at the top they leave and save as before. The `*` legend and the "480 only" hint are on the
+Video page. Verified in xemu by shots (emulator-only): top, each sub-page, back out, leave to the Option menu;
+everything inside the safe area.
+
 ## M10 (part) — release workflow, package, README, LICENSE (2026-10-15)
 
 Branch `worktree-agent-aa82d2fc07be32a06` (from `port` 367d94b); nothing pushed, no tag. Not verified

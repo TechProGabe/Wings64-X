@@ -33,9 +33,9 @@ target_compile_options(wx_pbkit PRIVATE -w)
 # ---- game objects (tools/xbox/compile_game.py, incremental via depfiles) ----
 # Absent until the decomp is fetched (tools/xbox/fetch_decomp.sh, M2): the
 # XBE is then the platform layer alone, which boots to a card.
-# XBOX_LTO (xbox/build.sh: XBOX_LTO=1): the game code as bitcode, ThinLTO at
+# XBOX_LTO (default ON; xbox/build.sh: XBOX_LTO=0 turns it off): the game code as bitcode, ThinLTO at
 # the link (tools/xbox/thinlto_link.py); its own object folder.
-option(XBOX_LTO "ThinLTO over the game code" OFF)
+option(XBOX_LTO "ThinLTO over the game code (PLAN.md D3: the default)" ON)
 set(GAME_OUT ${CMAKE_BINARY_DIR}/game)
 set(GAME_ENV XBOX_LTO=)
 if(XBOX_LTO)

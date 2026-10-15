@@ -1,0 +1,43 @@
+--- a/src/app/save.c
++++ b/src/app/save.c
+@@ -104,7 +104,12 @@
+         }
+     }
+ #endif
++#ifdef WINGS64_XBOX
++    // PORT: sSaveFiles is static data (bit 31 clear on the Xbox): _uvMediaCopy would read it as a ROM offset
++    __builtin_memcpy(sSaveFilesMirror, &sSaveFiles, sizeof(sSaveFiles));
++#else
+     _uvMediaCopy(sSaveFilesMirror, &sSaveFiles, sizeof(sSaveFiles));
++#endif
+ }
+ 
+ s32 saveFileWrite(s32 fileIdx) {
+@@ -149,7 +154,12 @@
+     }
+     saveFile->raw[0xFF] = sum & 0xFF;
+     if (uvMemCmp(saveFile->raw, sSaveFilesMirror[fileIdx].raw, sizeof(saveFile->raw)) != 0) {
++#ifdef WINGS64_XBOX
++        // PORT: saveFile points into the static sSaveFiles (see saveModuleInit)
++        __builtin_memcpy(sSaveFilesMirror[fileIdx].raw, saveFile->raw, sizeof(saveFile->raw));
++#else
+         _uvMediaCopy(sSaveFilesMirror[fileIdx].raw, saveFile->raw, sizeof(saveFile->raw));
++#endif
+         if (uvFileWrite(saveFile->raw, fileIdx * sizeof(PilotwingsSaveFile), sizeof(PilotwingsSaveFile)) == 0) {
+             return 0;
+         }
+--- a/src/app/task.c
++++ b/src/app/task.c
+@@ -749,7 +749,12 @@
+         _uvDebugPrintf("task_birdpad : level out of valid range [%d] - set to 0\n", mapIdx);
+         mapIdx = 0;
+     }
++#ifdef WINGS64_XBOX
++    // PORT: sTaskTakeoffPads is static data (bit 31 clear on the Xbox): _uvMediaCopy would read it as a ROM offset
++    __builtin_memcpy(D_8035078C->dataTPAD, &sTaskTakeoffPads[mapIdx], sizeof(TaskTPAD));
++#else
+     _uvMediaCopy(D_8035078C->dataTPAD, &sTaskTakeoffPads[mapIdx], sizeof(TaskTPAD));
++#endif
+ }
+ 
+ void taskGetClsVehTest(u16* classIdx, u16* vehIdx, u16* testIdx) {

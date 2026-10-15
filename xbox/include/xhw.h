@@ -160,6 +160,13 @@ int xhw_shot_take(void);             /* 0 none, 1 BMP to E:, 2 [FBDUMP] to COM1 
 int xhw_running_in_xemu(void);
 
 /* ---- system ---- */
+/* ---- audio: the AI output, s16 stereo (xhw_audio.c, Melee-X's driver) ---- */
+int xhw_audio_init(uint32_t rate);            /* 1: AC97 or the xemu APU voice runs */
+void xhw_audio_set_rate(uint32_t rate);       /* osAiSetFrequency */
+uint32_t xhw_audio_space(void);               /* frames that fit the ring now */
+void xhw_audio_write(const int16_t* stereo, uint32_t frames);   /* drops what does not fit */
+void xhw_audio_stop(void);
+
 void xhw_quit_to_dashboard(void) __attribute__((noreturn));
 void xhw_reboot_self(void) __attribute__((noreturn));
 void xhw_exit_reason(const char* why);

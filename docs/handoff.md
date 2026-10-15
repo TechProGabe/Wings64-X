@@ -3,6 +3,39 @@
 Newest first. Each milestone entry says what was verified and how; "xemu"
 results are emulator-only (no timing, audio or memory claims from them).
 
+## M6 (first light) + M3 items — audio, ThinLTO default, static-RAM copies (2026-10-15)
+
+Branch `port`; nothing pushed. xemu-only results.
+
+- Audio wired (PLAN.md D6): `xbox/src/game/audio.c` runs each audio task's
+  Acmd list through `asp_hle_run` on the game's audio thread (identity
+  addresses: `asp_hle.c` builds with `ASP_HLE_SEGMENTS 0` on the console,
+  patches/029), installs the ROM's A_RESAMPLE table (US 0x51C30) at the first
+  task, and hands each AI buffer to `xbox/src/hw/xhw_audio.c` (Melee-X's AC97
+  polled driver + xemu APU voice, as is but for the comment, the 22050 Hz
+  default and `xhw_audio_set_rate`). `[AUDIO]` line every 10 s: tasks, us per
+  task, buffers, frames in, ring drops, peak, AI underruns, bad addresses,
+  unknown commands. Kill switch `-DWX_AUDIO=0`.
+- The audio thread had been dying since M3 (unnoticed: the game runs on
+  silently): `uvLevelInit` copied the ROM's COMM block into the 36-byte
+  `gUVBlockCounts` with the block's length and overwrote `alGlobals` right
+  behind it; `alAudioFrame` then read NULL. patches/033 clamps the copy.
+  Found from the crash report symbolized with `tools/xbox/sym.py` (its
+  default map name fixed to `wings64_x.map`).
+- Verified (xemu, 90 s, menus): ~59 audio tasks/s, ~21.5k frames/s in (22050
+  Hz), peak ~24000 (signal, not silence), 0 ring drops, 0 bad addresses, 0
+  unknown commands, 3-7 AI underruns (start-up); xemu APU voice path. Not
+  verified: what it sounds like (nobody listened yet), the AC97 path
+  (hardware), the 10-minute soak.
+- patches/032: the three `_uvMediaCopy` calls with a static-data source
+  (save mirror x2, Birdman take-off pad) are RAM copies on the Xbox.
+- ThinLTO is the default build (`XBOX_LTO=0` for plain objects; PLAN.md D3).
+  Verified: the LTO build reaches the title, menus, flight and the results in
+  xemu with the same pictures as the plain build (shots compared by eye).
+- Saves: not checked (the maintainer will on hardware). `file_load: checksum
+  failure` repeats in menus: the game loads both slots and an empty slot
+  fails the checksum before its magic check (N64 behaviour, by reading).
+
 ## M3 (in progress) — in-game picture fixes from the first watched sessions (2026-10-15)
 
 Branch `port`; nothing pushed. The game boots to the title, the menus and

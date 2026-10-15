@@ -118,7 +118,11 @@
 #include "asp_hle.h"
 
 #ifndef ASP_HLE_SEGMENTS
+#ifdef XBOX   /* the console: patches/029 puts full host pointers in the list */
+#define ASP_HLE_SEGMENTS 0
+#else
 #define ASP_HLE_SEGMENTS 1          /* 0: address words go to the callback unresolved */
+#endif
 #endif
 #ifndef ASP_HLE_ENV_FASTPATH
 #define ASP_HLE_ENV_FASTPATH 1      /* 0: ENVMIXER recomputes the gains every sample even when no ramp runs */

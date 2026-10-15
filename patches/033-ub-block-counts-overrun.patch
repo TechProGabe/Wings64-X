@@ -1,0 +1,16 @@
+--- a/src/kernel/memory.c
++++ b/src/kernel/memory.c
+@@ -428,6 +428,13 @@
+     while ((tag = uvFileReadBlock(temp_v0, &length, &source, 0)) != 0) {
+         switch (tag) {
+         case 'COMM':
++#ifdef WINGS64_XBOX
++            // PORT: the COMM block can be longer than UVBlockCounts (36 bytes); the copy ran into what the
++            // linker put next (on the Xbox alGlobals: the audio thread then died on NULL in alAudioFrame)
++            if (length > sizeof(gUVBlockCounts)) {
++                length = sizeof(gUVBlockCounts);
++            }
++#endif
+             _uvMediaCopy(&gUVBlockCounts, source, length);
+ #ifdef WINGS64_XBOX
+             // PW64: BE f32 + 16 u16.

@@ -4,7 +4,7 @@
     tools/xbox/sym.py crash.log                 # every [CRASH] eip/stack address
     tools/xbox/sym.py 0036c4f0 0014b6c0 ...     # given addresses
 
-The map is build-xbox/melee_x.map (override with --map). It must come from
+The map is build-xbox/wings64_x.map (override with --map). It must come from
 the same build as the default.xbe that crashed: CI uploads both together.
 cxbe keeps the link base (0x10000), so the map's Rva+Base column is the
 address the Xbox reports."""
@@ -48,7 +48,7 @@ def lookup(syms, keys, addr):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--map', default=os.path.join(ROOT, 'build-xbox', 'melee_x.map'))
+    ap.add_argument('--map', default=os.path.join(ROOT, 'build-xbox', 'wings64_x.map'))
     ap.add_argument('inputs', nargs='+', help='crash.log / boot.log, or hex addresses')
     a = ap.parse_args()
     syms = load(a.map)

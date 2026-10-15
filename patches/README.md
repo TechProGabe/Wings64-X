@@ -60,6 +60,8 @@ bit-field ones hold because the game triple uses GCC's layout
 | 028 | photo album keeps a persistent frame (`DIVERGES`, `WINGS64_FB_PERSIST`) | guard, comment |
 | 029 | host pointers: the K0/physical conversions are the identity | Wings64-X own |
 | 030 | culling frustum widened to the full screen (`DIVERGES`, `WINGS64_CULL_WIDEN`) | Wings64-X own |
+| 032 | static-data sources of `_uvMediaCopy` copied as RAM (save mirror, Birdman take-off pad) | Wings64-X own |
+| 033 | UB: `uvLevelInit` COMM copy clamped to `UVBlockCounts` (it overwrote `alGlobals`) | Wings64-X own |
 
 The port-side functions these call: `xbox/src/game/rom/` (`pw64_swap`, the
 loaders, the arena, `N64_K0`'s base), `xbox/src/game/ultra/fatal.c`

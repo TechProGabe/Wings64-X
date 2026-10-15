@@ -23,3 +23,6 @@ baserom*
 
 # release zips (tools/xbox/package_release.py)
 /dist/
+
+# agent worktrees
+/.claude/

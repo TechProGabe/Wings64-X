@@ -39,6 +39,7 @@ typedef struct {
     int tex_filter;      /* 0 N64 (the game's per-texture choice), 1 smooth, 2 sharp */
     int aa;              /* 0 off, 1 2x, 2 4x (480 only; restart) */
     int rumble;          /* 1: the controller rumbles on a crash */
+    int fps_mode;        /* 60 or 30: the game's frame rate cap (os_shim.c vi_thread; PLAN.md M5) */
     char video_confirmed[8];
 } WxSettings;
 extern WxSettings g_wx_settings;

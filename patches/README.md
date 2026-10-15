@@ -67,6 +67,20 @@ bit-field ones hold because the game triple uses GCC's layout
 | 035 | title menu: the game's two items at the bottom, no copyright line (`DIVERGES`, `WINGS64_SETTINGS_IN_OPTIONS`, `WINGS64_TITLE_COPYRIGHT`) | Wings64-X own |
 | 036 | Option menu: "Port settings" and "Exit to dashboard" (`DIVERGES`, `WINGS64_SETTINGS_IN_OPTIONS`) | Wings64-X own |
 | 037 | rumble on a crash (the crash jingle starts; `DIVERGES`, `WX_RUMBLE`, the Rumble row) | Wings64-X own |
+| 038 | frame rate: `func_80313D74` sets the N64-frame scale (`wings64_rate.h`), frozen-time screens per N64 frame (`DIVERGES`, `WX_RATE`) | from Birdman64 (MIT) |
+| 039 | frame rate: `func_80313AF4`'s approach step covers the N64 frame's fraction (`DIVERGES`, `WX_RATE`) | from Birdman64 (MIT) |
+| 040 | frame rate: the flight recorder samples by recorder time, not every 2nd frame (`DIVERGES`, `WX_RATE`) | from Birdman64 (MIT) |
+| 041 | frame rate: frame counters used as durations count N64 frames (HG contact crash, gyrocopter trim, shutter; `DIVERGES`, `WX_RATE`) | from Birdman64 (MIT) |
+| 042 | frame rate: physics steps without `dt` per N64 frame (weathervane, birdman landing nudge, JH crouch turn; `DIVERGES`, `WX_RATE`) | from Birdman64 (MIT) |
+| 043 | frame rate: the birdman's flap impulse and decay skip are an N64 frame's (`DIVERGES`, `WX_RATE`) | from Birdman64 (MIT) |
+| 044 | frame rate: per-frame random draws at the N64's spread (wind walk, skydiver drift, wing flutter; `DIVERGES`, `WX_RATE`) | from Birdman64 (MIT) |
+| 045 | frame rate: per-frame visual steps and decays per N64 frame (JH legs and camera, fly-by camera, ski lift, shuttle, splash, hawk, sound fade, flame, radar blink; `DIVERGES`, `WX_RATE`) | from Birdman64 (MIT) |
+
+038-045 (PLAN.md M5, real 60 fps) are adapted from Birdman64's rate-decoupling patches
+(https://github.com/NoahVl/Birdman64, MIT, `crates/pw64-game/patches`, its `docs/notes/framerate.md`
+audit): only the hunks that change anything at the port's 60 fps cap, re-guarded, one reason each, on
+the helpers in `xbox/include/game/wings64_rate.h` / `xbox/src/game/rate.c`; each `.md` says what it
+scales and what of Birdman64's was left out.
 
 The port-side functions these call: `xbox/src/game/rom/` (`pw64_swap`, the
 loaders, the arena, `N64_K0`'s base), `xbox/src/game/ultra/fatal.c`

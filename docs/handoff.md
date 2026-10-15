@@ -3,6 +3,50 @@
 Newest first. Each milestone entry says what was verified and how; "xemu"
 results are emulator-only (no timing, audio or memory claims from them).
 
+## M5 — Real 60 fps: measured, rate patches 038-045, the Frame rate row (2026-10-15)
+
+Worktree branch off `port` (367d94b); nothing pushed. All run results below are xemu-only.
+
+- **Measured first** (PLAN.md M5 risk note). The game is delta-time driven: `func_80313D74` takes
+  `D_8034F854` from the CPU counter between two `uvGfxEnd`s, clamped [0.01, 0.1] s, and physics, cameras,
+  timers and the world integrate with it. `_uvScCreateScheduler` asks for a retrace message every field
+  (`numFields` 1) and `_uvScRunGfx` starts a display list once the last swap latched: there is no
+  "every other retrace" anywhere, the port has drawn up to 60 since M3 (xemu: 45-52 fps in menus,
+  36-50 in flight; emulator-bound, not a console figure). So the game's speed was already right at 60;
+  what differs is code that steps once per frame. Birdman64's audit (`docs/notes/framerate.md`) lists
+  those; the ones that matter at a 60 cap are imported as patches 038-045 (table in patches/README.md,
+  each `.md` says what it scales and what was left out). Game seconds run 2.46 % fast against the wall
+  clock on the N64 and here alike (46.875 MHz counter, 45.75 MHz in `uv_clocks.h`): measured 2.5-2.7 %
+  in xemu at both rates.
+- **Helpers**: `xbox/include/game/wings64_rate.h`, `xbox/src/game/rate.c` (own `powf`, no libm);
+  `WX_REF_DT` = 0.034152 s (a 30 fps N64 frame on the game's clock). Host test `tools/xbox/test_rate.py`
+  (144 checks: powf vs libm, decay/step/ticks/approach per second equal at 20-60 Hz).
+- **Frame rate row** (Port settings, "Frame rate 60 / 30", `[video] fps_mode`, default 60, applied at
+  once): at 30 `os_shim.c` `vi_thread` latches a new swap 2 retraces after the last, so display lists
+  start at most every other retrace; the scheduler and audio still get every retrace. Test builds:
+  `env MX_FPS_MODE=30|60`. `[RATE]` lines (test builds, `boot.c`): wall/game time, dt, scale, HUD timer,
+  altitude, speed, position, once a second in flight/results/demos.
+- **Kill switches**: `-DWX_RATE=0` (038-045 compute the N64's per-frame steps), `-DWX_FPS_MODE_DEFAULT=30`.
+- **Verified (xemu, slots 2 and 4, scenarios in a scratch dir)**: hang glider class A test 1 with no
+  input in flight, at 60 (three runs, two builds) and 30: the glide matches to ~2 cm in position at the
+  same HUD time through 13 s; the crash comes at HUD time 20.315/20.316/20.316 s (60) and 20.329 s (30),
+  under a 30 fps frame apart; `WX_RATE=0` at 60 gives the same 20.316 (nothing in this flight hits a
+  patched step). PERF: ~28-30 fps at 30, 40-52 at 60. The panel row toggles 60 -> 30 -> 60 live (PERF
+  follows, shots of the panel at 10 rows). Attract demos (states 8/9/5) play to the end and return to
+  the title at 60 and 30; their poses at the same demo time agree within a frame's travel. Release and
+  test builds clean; `rom_leak_check.py` clean.
+- **Not verified**: anything that exercises the patched steps (birdman flaps, gyrocopter trim, JH, a HG
+  ground scrape, the replay's length) side by side at 30 and 60 -- the autopad counts presented frames,
+  so the same script lands in different places at 30 and 60 (menus' timed fades take fewer frames at
+  30: s60's last menu press landed in flight at 30 and pitched the glider up; that was the only
+  "divergence" seen). The console (feel per vehicle, a locked 60 in flight: M9's job). The PLAN's
+  `XGFX_FDR_HASH` replay oracle is not built: the `[RATE]` positions were used instead.
+- **Seen once** (1 run in ~14, 30 fps, a diagnostic build): at the pilot-select -> test transition the
+  game thread sat in `uvaSeqStop`'s 2 s spin for minutes while the audio thread (level 14) was busy in
+  `alAudioFrame` / `__CSPVoiceHandler`, starving it (WDOG dumps; symbolized with `sym.py`). Not
+  reproduced on a rerun; the 30 fps cap does not touch audio, so likely an older audio/priority race
+  (`WX_AUDIO_THREAD_LEVEL`). Open.
+
 ## M7 (part, follow-up) — "Port settings" in Option, title menu at the bottom (2026-10-15)
 
 Branch `port`; nothing pushed. Maintainer's call: the panel is "Port settings" in the game's Option menu

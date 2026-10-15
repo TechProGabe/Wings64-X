@@ -1,0 +1,90 @@
+--- a/src/app/fdr.c
++++ b/src/app/fdr.c
+@@ -1,6 +1,9 @@
+ #include "common.h"
+ #include "code_9A960.h"
+ #include "fdr.h"
++#ifdef WINGS64_XBOX
++#include <wings64_rate.h>
++#endif
+ 
+ #define FDR_SIZE 200
+ 
+@@ -52,6 +55,12 @@
+ Unk8035FDA0* D_803619C0;
+ Unk803619C8 D_803619C8[FDR_SIZE];
+ s32 D_80362008;
++#ifdef WINGS64_XBOX
++// DIVERGES: frame rate (patches/040): the recorder time of the last pose sample, and
++// whether fdr_802E66DC asked for every-frame sampling.
++static f32 sWxFdrSampleTime;
++static s32 sWxFdrForced;
++#endif
+ 
+ STATIC_FUNC void fdrControls(f32, f32);
+ STATIC_FUNC s32 fdrGetControls(f32*, f32*);
+@@ -81,15 +90,33 @@
+ 
+     if (D_8035AF64 == 1) {
+         D_8035AF60++;
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/040): a pose sample every 2nd frame (every frame
++        // while fdr_802E66DC forces it) into 200-entry rings kept the last 400 frames:
++        // ~13 s at the N64's 30 fps, 6.7 s at 60. Sample every 2 (forced: 1) N64 frames
++        // of recorder time; playback interpolates by timestamp (Birdman64, MIT).
++        if (WX_RATE) {
++            D_8034F0A0 = (D_8035AF68 - sWxFdrSampleTime) >= (sWxFdrForced ? 1.0f : 2.0f) * WX_REF_DT - 1e-4f;
++            sWxFdrForced = FALSE;
++        } else if (D_8035AF60 >= 2) {
++            D_8034F0A0 = 1;
++        } else {
++            D_8034F0A0 = 0;
++        }
++#else
+         if (D_8035AF60 >= 2) {
+             D_8034F0A0 = 1;
+         } else {
+             D_8034F0A0 = 0;
+         }
++#endif
+         if (D_8034F0A0 != 0) {
+             fdr_802E7214(arg0, *arg1);
+             fdrControls(*arg2, *arg3);
+             D_8035AF60 = 0;
++#ifdef WINGS64_XBOX
++            sWxFdrSampleTime = D_8035AF68;
++#endif
+         } else {
+             D_8034F0A0 = 0;
+         }
+@@ -107,7 +134,19 @@
+ 
+ void fdr_802E66DC(void) {
+     D_8035AF60 = 1;
++#ifdef WINGS64_XBOX
++    // DIVERGES: frame rate (patches/040): forced sampling was every frame; flag the
++    // vehicle samples (fdr_802E682C) when an N64 frame has passed, and sample poses
++    // every N64 frame.
++    if (WX_RATE) {
++        D_8034F0A0 = (D_8035AF68 - sWxFdrSampleTime) >= WX_REF_DT - 1e-4f;
++        sWxFdrForced = TRUE;
++    } else {
++        D_8034F0A0 = 1;
++    }
++#else
+     D_8034F0A0 = 1;
++#endif
+ }
+ 
+ void fdrSetBlen(f32 arg0) {
+@@ -160,6 +199,10 @@
+         D_8035C230 = D_8035B5B0;
+         D_803619C0 = D_8035FDA0;
+         D_8035AF60 = 2;
++#ifdef WINGS64_XBOX
++        sWxFdrSampleTime = -1000000.0f; // patches/040: the first frame samples
++        sWxFdrForced = FALSE;
++#endif
+         for (i = 0; i < ARRAY_COUNT(D_8035FDA0); i++) {
+             D_8035C238[i].unk0 = 1000000.0f;
+             D_8035B5B0[i].unk0 = 1000000.0f;

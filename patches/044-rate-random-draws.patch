@@ -1,0 +1,192 @@
+--- a/src/app/environment.c
++++ b/src/app/environment.c
+@@ -20,6 +20,9 @@
+ #include <uv_math.h>
+ #include <uv_memory.h>
+ #include <uv_texture.h>
++#ifdef WINGS64_XBOX
++#include <wings64_rate.h>
++#endif
+ 
+ typedef struct {
+     Vec3F unk0;
+@@ -313,7 +316,15 @@
+ void env_802E15F0(void) {
+     f32 var_fv1;
+ 
++#ifdef WINGS64_XBOX
++    // DIVERGES: frame rate (patches/044): the wind's speed and direction take a random
++    // step a frame, scaled by dt: the spread per second goes as sqrt(dt), so the wind
++    // varied 0.71x as much at 60 fps as at the N64's 30. Steps of an N64 frame's
++    // spread (Birdman64, MIT).
++    var_fv1 = (demoRandF() - 0.5f) * D_80359D80.unk18 * D_8034F854 * wx_rate_walk();
++#else
+     var_fv1 = (demoRandF() - 0.5f) * D_80359D80.unk18 * D_8034F854;
++#endif
+     if ((D_80359D80.unk20 < D_80359D80.unk10) && (var_fv1 > 0.0f)) {
+         var_fv1 = -var_fv1;
+     }
+@@ -321,7 +332,11 @@
+         var_fv1 = -var_fv1;
+     }
+     D_80359D80.unk10 += var_fv1;
++#ifdef WINGS64_XBOX
++    var_fv1 = (demoRandF() - 0.5f) * D_80359D80.unk28 * D_8034F854 * wx_rate_walk(); // patches/044
++#else
+     var_fv1 = (demoRandF() - 0.5f) * D_80359D80.unk28 * D_8034F854;
++#endif
+     if ((D_80359D80.unk30 < D_80359D80.unkC) && (var_fv1 > 0.0f)) {
+         var_fv1 = -var_fv1;
+     }
+--- a/src/app/code_BA190.c
++++ b/src/app/code_BA190.c
+@@ -14,6 +14,14 @@
+ void func_80333384(SkyDivingData*);
+ s32 func_803335D0(SkyDivingData*);
+ 
++#ifdef WINGS64_XBOX
++#include <wings64_rate.h>
++// DIVERGES: frame rate (patches/044): the skydiver's held drift targets (func_80332FCC).
++static SkyDivingData* sWxDriftOwner;
++static f32 sWxDriftAcc;
++static f32 sWxDrift[3];
++#endif
++
+ void func_80332C60(SkyDivingData* sdData) {
+     Vec3F sp24 = { 0.0f, 0.0f, 0.0f };
+ 
+@@ -162,9 +170,28 @@
+         sdData->unk268 = 1.0f;
+     }
+     sdData->unk160.z = func_80313AF4(sp28, sdData->unk160.z, 3.0f);
++#ifdef WINGS64_XBOX
++    // DIVERGES: frame rate (patches/044): a new random drift target every frame,
++    // low-passed (k = 10): the jitter goes as sqrt(dt), less at 60 fps. Draw the
++    // targets once per N64 frame and hold them (one draw a frame at 30 fps: the
++    // N64's draws in the N64's order; Birdman64, MIT).
++    if (sWxDriftOwner != sdData) {
++        sWxDriftOwner = sdData;
++        sWxDriftAcc = 1.0f; // draw on the first frame
++    }
++    if (wx_rate_ticks(&sWxDriftAcc) > 0) {
++        sWxDrift[0] = uvRandF_RANLUX() - 0.50f;
++        sWxDrift[1] = uvRandF_RANLUX() - 0.50f;
++        sWxDrift[2] = uvRandF_RANLUX() - 0.50f;
++    }
++    sdData->unk1B4 = func_80313AF4(sWxDrift[0], sdData->unk1B4, 10.0f);
++    sdData->unk1B8 = func_80313AF4(sWxDrift[1], sdData->unk1B8, 10.0f);
++    sdData->unk1BC = func_80313AF4(sWxDrift[2], sdData->unk1BC, 10.0f);
++#else
+     sdData->unk1B4 = func_80313AF4(uvRandF_RANLUX() - 0.50f, sdData->unk1B4, 10.0f);
+     sdData->unk1B8 = func_80313AF4(uvRandF_RANLUX() - 0.50f, sdData->unk1B8, 10.0f);
+     sdData->unk1BC = func_80313AF4(uvRandF_RANLUX() - 0.50f, sdData->unk1BC, 10.0f);
++#endif
+     sdData->unk10.m[3][0] += 0.5f * sdData->unk1B4 * D_8034F854;
+     sdData->unk10.m[3][1] += 0.5f * sdData->unk1B8 * D_8034F854;
+     sdData->unk10.m[3][2] += 0.5f * sdData->unk1BC * D_8034F854;
+--- a/src/app/skydiving.c
++++ b/src/app/skydiving.c
+@@ -26,6 +26,13 @@
+ s32 D_80371968;
+ s32 D_8037196C;
+ Unk80371970 D_80371970[4];
++#ifdef WINGS64_XBOX
++#include <wings64_rate.h>
++// DIVERGES: frame rate (patches/044): the formation divers' held drift targets
++// (func_803322CC), one per D_80371970 entry. Starts at 1: the first frame draws.
++static f32 sWxDriftAcc = 1.0f;
++static f32 sWxDrift[ARRAY_COUNT(D_80371970)][3];
++#endif
+ 
+ Unk8034FFD0 D_8034FFD0[] = {
+     {
+@@ -1096,11 +1103,17 @@
+     Mtx4F sp88;
+     Unk8034FFD0* temp_v0;
+     s32 i;
++#ifdef WINGS64_XBOX
++    s32 wxRedraw;
++#endif
+ 
+     temp_v0 = sdData->unk258;
+     if (temp_v0 == NULL) {
+         return;
+     }
++#ifdef WINGS64_XBOX
++    wxRedraw = wx_rate_ticks(&sWxDriftAcc) > 0; // patches/044
++#endif
+ 
+     for (i = 0; i < 3; i++) {
+         spC8 = &D_80371970[i];
+@@ -1119,9 +1132,22 @@
+         spC8->unk10.m[3][0] += spC8->unk4 * D_8034F854;
+         spC8->unk10.m[3][1] += spC8->unk8 * D_8034F854;
+         spC8->unk10.m[3][2] += spC8->unkC * D_8034F854;
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/044): a random drift target a frame, low-passed
++        // (k = 10): jitter ~ sqrt(dt). Redrawn once per N64 frame, held per diver.
++        if (wxRedraw) {
++            sWxDrift[i][0] = uvRandF_RANLUX() - 0.50f;
++            sWxDrift[i][1] = uvRandF_RANLUX() - 0.50f;
++            sWxDrift[i][2] = uvRandF_RANLUX() - 0.50f;
++        }
++        spC8->unk64 = func_80313AF4(sWxDrift[i][0], spC8->unk64, 10.0f);
++        spC8->unk68 = func_80313AF4(sWxDrift[i][1], spC8->unk68, 10.0f);
++        spC8->unk6C = func_80313AF4(sWxDrift[i][2], spC8->unk6C, 10.0f);
++#else
+         spC8->unk64 = func_80313AF4(uvRandF_RANLUX() - 0.50f, spC8->unk64, 10.0f);
+         spC8->unk68 = func_80313AF4(uvRandF_RANLUX() - 0.50f, spC8->unk68, 10.0f);
+         spC8->unk6C = func_80313AF4(uvRandF_RANLUX() - 0.50f, spC8->unk6C, 10.0f);
++#endif
+ 
+         spC8->unk10.m[3][0] += 0.5f * spC8->unk64 * D_8034F854;
+         spC8->unk10.m[3][1] += 0.5f * spC8->unk68 * D_8034F854;
+--- a/src/app/birdman1.c
++++ b/src/app/birdman1.c
+@@ -8,6 +8,13 @@
+ #include "birdman.h"
+ #include "code_9A960.h"
+ #include "demo.h"
++#ifdef WINGS64_XBOX
++#include <wings64_rate.h>
++// DIVERGES: frame rate (patches/044): the held wing-flutter factors of bird_802CE190.
++static BirdmanData* sWxFlutterOwner;
++static f32 sWxFlutterAcc;
++static f32 sWxFlutter[2];
++#endif
+ 
+ void bird_802CE190(BirdmanData* bmData, u8 gameState) {
+     Mtx4F sp558;
+@@ -99,12 +106,32 @@
+         } else if (sp30 > 1.5f) {
+             sp30 = 1.5f;
+         }
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/044): the wing flutter factor is drawn every frame
++        // and low-passed (k = 15): jitter ~ sqrt(dt). Draw once per N64 frame and hold
++        // (the two discarded draws too, so the RNG order is the N64's at 30 fps).
++        if (sWxFlutterOwner != bmData) {
++            sWxFlutterOwner = bmData;
++            sWxFlutterAcc = 1.0f; // draw on the first frame
++        }
++        if (wx_rate_ticks(&sWxFlutterAcc) > 0) {
++            sWxFlutter[0] = (uvRandF_RANLUX() * 0.2f) + 0.8f;
++            uvRandF_RANLUX();
++            sWxFlutter[1] = (uvRandF_RANLUX() * 0.2f) + 0.8f;
++            uvRandF_RANLUX();
++        }
++        bmData->unk2E0 = func_80313AF4(sWxFlutter[0] * sp34, bmData->unk2E0, 15.0f);
++        bmData->unk2E8 = func_80313AF4(sp30, bmData->unk2E8, 15.0f);
++        bmData->unk2E4 = func_80313AF4(sWxFlutter[1] * sp34, bmData->unk2E4, 15.0f);
++        bmData->unk2EC = func_80313AF4(sp30, bmData->unk2EC, 15.0f);
++#else
+         bmData->unk2E0 = func_80313AF4(((uvRandF_RANLUX() * 0.2f) + 0.8f) * sp34, bmData->unk2E0, 15.0f);
+         uvRandF_RANLUX();
+         bmData->unk2E8 = func_80313AF4(sp30, bmData->unk2E8, 15.0f);
+         bmData->unk2E4 = func_80313AF4(((uvRandF_RANLUX() * 0.2f) + 0.8f) * sp34, bmData->unk2E4, 15.0f);
+         uvRandF_RANLUX();
+         bmData->unk2EC = func_80313AF4(sp30, bmData->unk2EC, 15.0f);
++#endif
+         uvModelGetPosm(bmData->unk3F4, 0x18, &sp558);
+         uvMat4RotateAxis(&sp558, bmData->unk2E0, 'x');
+         uvMat4RotateAxis(&sp558, bmData->unk2E8, 'z');

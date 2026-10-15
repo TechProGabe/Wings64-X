@@ -1,0 +1,159 @@
+--- a/src/app/hang_glider2.c
++++ b/src/app/hang_glider2.c
+@@ -15,6 +15,13 @@
+ #include "snd.h"
+ #include "task.h"
+ #include "text_data.h"
++#ifdef WINGS64_XBOX
++#include <wings64_rate.h>
++
++// DIVERGES: frame rate (patches/041): the fraction of an N64 frame of the
++// hgData->unk90 contact counter.
++static f32 sWxHgContactAcc;
++#endif
+ 
+ typedef struct {
+     Vec2F unk0[23];
+@@ -709,7 +716,13 @@
+                 func_802DC1DC(&hgData->unk1DC, &temp_s1->unk28, &sp24C, 4.0f * sp244, 1.2f * sp244, 2.0f * sp244);
+                 func_802DC074(&hgData->unk14C, &hgData->unk18C, &hgData->unk1A4, &temp_s1->unk34, sp248);
+                 if (D_8034F850 > 2.0f) {
++#ifdef WINGS64_XBOX
++                    // DIVERGES: frame rate (patches/041): +1 per contact frame, a crash at 91:
++                    // 3 s of scraping at the N64's 30 fps, 1.5 s at 60. Count N64 frames.
++                    hgData->unk90 += wx_rate_ticks(&sWxHgContactAcc);
++#else
+                     hgData->unk90++;
++#endif
+                 }
+                 if (hgData->unk90 >= 91) {
+                     hgData->unk8C = 2;
+--- a/src/app/gyrocopter.c
++++ b/src/app/gyrocopter.c
+@@ -18,6 +18,16 @@
+ #include "app/code_66F70.h"
+ #include "app/code_9A960.h"
+ #include "app/code_B2900.h"
++#ifdef WINGS64_XBOX
++#include <wings64_rate.h>
++
++// DIVERGES: frame rate (patches/041): the hands-off level-flight trim
++// (gcData->unk7C, func_80309090) counts N64 frames: the fraction of the current
++// one, and "unk7C was just set to 1" (its setup runs once, not on every frame of
++// that N64 frame).
++static f32 sWxGcTrimAcc;
++static s32 sWxGcTrimFresh;
++#endif
+ 
+ void func_80304738(GyrocopterData* gcData);
+ void func_80304B98(GyrocopterData* gcData);
+@@ -1573,6 +1583,10 @@
+             (gcData->fuel > 0.0f)) {
+             if (gcData->unk7C == 0) {
+                 gcData->unk7C = 1;
++#ifdef WINGS64_XBOX
++                sWxGcTrimAcc = 0.0f; // patches/041
++                sWxGcTrimFresh = TRUE;
++#endif
+             }
+         } else {
+             gcData->unk7C = 0;
+@@ -1895,6 +1909,48 @@
+     if ((gcData->unk6D == 0) && (gcData->unk6E == 0)) {
+         if (gcData->unk7C != 0) {
+             if (ABS_NOEQ(gcData->unk1AC.y) < 0.08f) {
++#ifdef WINGS64_XBOX
++                // DIVERGES: frame rate (patches/041): unk7C counted frames: the blends over
++                // 50/100 frames took 1.7/3.4 s at the N64's 30 fps, half that at 60. It
++                // counts N64 frames now, the blends use the fractional count, and
++                // `100 * dt` (the blend's length in seconds) is 100 N64 frames
++                // (Birdman64, MIT). The unk7C == 1 setup runs once per trigger.
++                f32 wxTrim = WX_RATE ? sWxGcTrimAcc : 0.0f;
++                if ((gcData->unk7C == 1) && (sWxGcTrimFresh || !WX_RATE)) {
++                    sWxGcTrimFresh = FALSE;
++                    gcData->unk80 = gcData->unk1AC.y;
++                    gcData->unk84 = gcData->unk1AC.z;
++                    gcData->unk88 = (gcData->unk1AC.z + ((4.0f * sp4C.z) / (100.0f * wx_rate_impulse_dt(D_8034F854)))) * -0.5f;
++                } else if (gcData->unk7C > 100) {
++                    gcData->unk7C = 1;
++                    sWxGcTrimAcc = 0.0f;
++                    wxTrim = 0.0f;
++                    gcData->unk80 = 0.0f;
++                    gcData->unk84 = 0.0f;
++                    gcData->unk88 = (-2.0f * sp4C.z) / (100.0f * wx_rate_impulse_dt(D_8034F854));
++                }
++                if (gcData->unk7C < 50.0f) {
++                    temp_fv0 = (gcData->unk7C + wxTrim) / 50.0f;
++                    gcData->unk1AC.z = gcData->unk84 + ((gcData->unk88 - gcData->unk84) * temp_fv0);
++                } else if (gcData->unk7C < 100) {
++                    temp_fv0 = (1.0f - (((gcData->unk7C + wxTrim) - 50.0f) / 50.0f));
++                    gcData->unk1AC.z = gcData->unk88 * temp_fv0;
++                } else {
++                    gcData->unk1AC.y = 0.0f;
++                    gcData->unk1AC.z = 0.0f;
++                }
++                if (gcData->unk7C < 100) {
++                    if (gcData->unk80 > 0.0f) {
++                        temp_fv0 = (gcData->unk7C + wxTrim) / 100.0f;
++                        gcData->unk1AC.y = gcData->unk80 * (1.0f - temp_fv0);
++                    }
++                    gcData->unk7C += wx_rate_ticks(&sWxGcTrimAcc);
++                } else {
++                    if (ABS_NOEQ(gcData->unk190.z) > 0.00001f) {
++                        gcData->unk7C += wx_rate_ticks(&sWxGcTrimAcc);
++                    }
++                }
++#else
+                 if (gcData->unk7C == 1) {
+                     gcData->unk80 = gcData->unk1AC.y;
+                     gcData->unk84 = gcData->unk1AC.z;
+@@ -1926,6 +1982,7 @@
+                         gcData->unk7C++;
+                     }
+                 }
++#endif
+             }
+         }
+     }
+--- a/src/app/hud.c
++++ b/src/app/hud.c
+@@ -22,6 +22,11 @@
+ 
+ // number of frames to render for camera shutter animation
+ #define CAMERA_SHUTTER_FRAMES 3
++#ifdef WINGS64_XBOX
++#include <wings64_rate.h>
++// DIVERGES: frame rate (patches/041): the fraction of an N64 frame of the shutter countdown.
++static f32 sWxShutterAcc;
++#endif
+ 
+ // hang glider speeds below this value will be highlighted larger red/amber font
+ #define HIGHLIGHT_SPEED_BELOW 36
+@@ -703,6 +708,9 @@
+         }
+     } else if (hud->cameraState & HUD_CAM_RENDER_SHUTTER) {
+         hud->cameraState = CAMERA_SHUTTER_FRAMES; // state now means # frames to render shutter
++#ifdef WINGS64_XBOX
++        sWxShutterAcc = 0.0f; // patches/041
++#endif
+     } else if (hud->cameraState != 0) {
+         // field is count down for rendering black rects for shutter
+         if (hud->cameraState != 0) {
+@@ -713,7 +721,17 @@
+         uvGfxBindTexture(GFX_STATE_TEXTURE_NONE);
+         uvVtxRect(0, SCREEN_HEIGHT - 1, x, 0);
+         uvVtxRect(SCREEN_WIDTH - 1 - x, SCREEN_HEIGHT - 1, SCREEN_WIDTH - 1, 0);
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/041): the shutter lasted CAMERA_SHUTTER_FRAMES
++        // frames: count N64 frames. Never below 0: the high bits are the
++        // HUD_CAM_RENDER_* flags.
++        hud->cameraState -= wx_rate_ticks(&sWxShutterAcc);
++        if (hud->cameraState < 0) {
++            hud->cameraState = 0;
++        }
++#else
+         hud->cameraState--;
++#endif
+         D_8034F914 = 0;
+     }
+ }

@@ -1,0 +1,87 @@
+--- a/src/app/birdman2.c
++++ b/src/app/birdman2.c
+@@ -9,6 +9,9 @@
+ #include "balls.h"
+ #include "environment.h"
+ #include "snd.h"
++#ifdef WINGS64_XBOX
++#include <wings64_rate.h>
++#endif
+ 
+ typedef struct {
+     Vec2F unk0[23];
+@@ -299,7 +302,14 @@
+     if (bmData->unk200.x < 0.0f) {
+         var_fa1 = -var_fa1;
+     }
++#ifdef WINGS64_XBOX
++    // DIVERGES: frame rate (patches/042): the sideslip weathervane changes the yaw rate
++    // once a frame without dt (the rate is integrated with dt after): twice as strong
++    // at 60 fps. Per N64 frame instead (Birdman64, MIT).
++    bmData->unk24C -= 0.005f * var_fa1 * wx_rate_scale();
++#else
+     bmData->unk24C -= 0.005f * var_fa1;
++#endif
+ }
+ 
+ void bird_802CF5B4(BirdmanData* bmData) {
+@@ -623,9 +633,17 @@
+                     return;
+                 }
+ #endif
++#ifdef WINGS64_XBOX
++                // DIVERGES: frame rate (patches/042): after landing, each contact frame
++                // nudged the bird 0.01 along the normal: per N64 frame instead.
++                bmData->unk10.m[3][0] += 0.01f * bmData->unk174.x * wx_rate_scale();
++                bmData->unk10.m[3][1] += 0.01f * bmData->unk174.y * wx_rate_scale();
++                bmData->unk10.m[3][2] += 0.01f * bmData->unk174.z * wx_rate_scale();
++#else
+                 bmData->unk10.m[3][0] += 0.01f * bmData->unk174.x;
+                 bmData->unk10.m[3][1] += 0.01f * bmData->unk174.y;
+                 bmData->unk10.m[3][2] += 0.01f * bmData->unk174.z;
++#endif
+                 return;
+             }
+ 
+--- a/src/app/hang_glider2.c
++++ b/src/app/hang_glider2.c
+@@ -361,7 +361,13 @@
+     if (hgData->unk18C.x < 0.0f) {
+         var_fa1 = -var_fa1;
+     }
++#ifdef WINGS64_XBOX
++    // DIVERGES: frame rate (patches/042): the sideslip weathervane, as birdman2.c's:
++    // per N64 frame instead of per frame.
++    hgData->unk1D8 -= 0.005f * var_fa1 * wx_rate_scale();
++#else
+     hgData->unk1D8 -= 0.005f * var_fa1;
++#endif
+ }
+ 
+ STATIC_FUNC void hangGlider_802F2F94(HangGliderData* hgData) {
+--- a/src/app/code_82B90.c
++++ b/src/app/code_82B90.c
+@@ -23,6 +23,9 @@
+ #include "app/code_66F70.h"
+ #include "app/code_9A960.h"
+ #include "app/code_D1ED0.h"
++#ifdef WINGS64_XBOX
++#include <wings64_rate.h>
++#endif
+ 
+ Unk802D3658_Unk111C D_80368C00;
+ Unk802D3658_Unk111C D_80368D08;
+@@ -687,7 +690,13 @@
+ }
+ 
+ void func_802FD388(JumbleHopperData* jhData) {
++#ifdef WINGS64_XBOX
++    // DIVERGES: frame rate (patches/042): the Jumble Hopper turns 5 degrees a frame
++    // (at full stick) while crouching or charging: per N64 frame instead.
++    jhData->unk140.x -= (jhData->unk14 * FABS(jhData->unk14)) * 5.0 * wx_rate_scale();
++#else
+     jhData->unk140.x -= (jhData->unk14 * FABS(jhData->unk14)) * 5.0;
++#endif
+ }
+ 
+ void func_802FD3E0(JumbleHopperData* jhData) {

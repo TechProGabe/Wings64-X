@@ -385,12 +385,31 @@ static void stall_watch(void) {
                  s_thr[i].t ? (int)s_thr[i].t->priority : -1, s_thr[i].wait);
 }
 
+/* The Frame rate row (settings.ini fps_mode, PLAN.md M5). The scheduler
+ * starts a display list at a retrace only once the last swap has latched
+ * (sched.c _uvScRunGfx: current == next framebuffer), and the game asks for
+ * every retrace (numFields 1): at 60 the swap latches at the next retrace,
+ * as on the N64, and the game draws up to 60 frames a second. At 30 a new
+ * swap latches only 2 retraces after the one before, so a frame is shown
+ * for at least two fields and a display list starts at most every other
+ * retrace: the N64's 30 fps (it ran 20-30). DIVERGES: a port setting; the
+ * game's frame time follows (D_8034F854 is measured, patches/038), and the
+ * scheduler and the audio manager still get every retrace. Applied at the
+ * next retrace. */
+static u32 s_vi_latched_at;
+
+static u32 vi_swap_interval(void) { return g_wx_settings.fps_mode == 30 ? 2u : 1u; }
+
 static void vi_thread(void* arg) {
     (void)arg;
     for (;;) {
         xhw_wait_vblank();
         stall_watch();
-        s_vi_cur = s_vi_next;   /* the swap latches at the retrace */
+        /* the swap latches at the retrace (at 30, not sooner than 2 after the last) */
+        if (s_vi_cur != s_vi_next && s_retrace + 1 - s_vi_latched_at >= vi_swap_interval()) {
+            s_vi_cur = s_vi_next;
+            s_vi_latched_at = s_retrace + 1;
+        }
         s_retrace++;
         /* DIVERGES: the retrace message is skipped when it would leave the
          * scheduler's queue fewer than two free slots: the gfx task runs

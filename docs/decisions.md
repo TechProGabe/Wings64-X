@@ -46,6 +46,7 @@ changed on import.
 | 029 | `include/libultra/PR/os_convert.h`, `include/libultra/PR/R4300.h`, `kernel/geometry.c` | **Wings64-X's own**: KSEG0/physical conversions are the identity, `geometry.c:347`'s `+ 0x80000000` dropped (host pointers stay host pointers; "Memory map" below) | `WINGS64_XBOX` |
 | 031 | `app/title_screen.c` | **Wings64-X's own**: fourth title item "Exit to dashboard" (`DIVERGES`; PLAN.md 3.4) | `WINGS64_XBOX && WINGS64_SETTINGS_MENU && WINGS64_TITLE_EXIT` (both default 1) |
 | 034 | `app/title_screen.c` | **Wings64-X's own**: BACK on the title opens the Settings panel (`DIVERGES`; PLAN.md D8) | `WINGS64_XBOX && WINGS64_SETTINGS_MENU` |
+| 038-045 | `app/{code_9A960,fdr,hang_glider2,gyrocopter,hud,birdman0,birdman1,birdman2,code_82B90,environment,code_BA190,skydiving,camera,ski_lift,shuttle,splash,falco,env_sound,code_AE460}.c` | **from Birdman64 (MIT)**: per-frame steps rescaled to an N64 frame so the game behaves at 60 fps as at the N64's 30 (`DIVERGES`; PLAN.md M5; "Frame rate" below) | `WINGS64_XBOX`, runtime `WX_RATE` (default 1) |
 
 Changes made on import, beyond the guard: 022 runs the command list (the
 Dreamcast's AICA played the voices, so its list was a placeholder; the Xbox
@@ -174,3 +175,37 @@ and `src/rsp` are not built (wings64-dc's list): the port supplies that
 layer. `src/libultra/audio` is built whole (unlike wings64-dc, which drops
 the synthesizer for its AICA voices): the Xbox runs libultra's synthesizer
 (PLAN.md D6).
+
+## Frame rate (M5)
+
+Measured before porting anything (PLAN.md M5's risk note): the game is
+delta-time driven. `func_80313D74` (`app/code_9A960.c`) takes the frame time
+`D_8034F854` from the CPU counter between two `uvGfxEnd` calls, clamped to
+[0.01, 0.1] s, and the vehicles, cameras, timers and the world integrate
+with it; `_uvScCreateScheduler` asks for a retrace message every field
+(`numFields` 1, `kernel/system.c`), and `_uvScRunGfx` starts the next display
+list once the last swap has latched (`osViGetCurrentFramebuffer() ==
+osViGetNextFramebuffer()`). There is no "every other retrace" in the game:
+the N64 ran 20-30 fps because the frame cost that much, and the port has
+drawn up to 60 since M3 (xemu: 40-52 in menus and flight, emulator-bound).
+The game's speed was already right at 60; what was not is code that steps
+once per call (counters, impulses, steps without `dt`, random draws, decays):
+patches 038-045, from Birdman64's audit, rescale those to an N64 frame
+(`WX_REF_DT` = 0.034152 s, a 30 fps frame read through the game's 45.75 MHz
+clock constant; the counter runs at 46.875 MHz, so game seconds run 2.46 %
+fast, on the N64 as here).
+
+- **Frame rate row** (`[video] fps_mode = 60|30`, default 60, applied at
+  once): `os_shim.c` `vi_thread` latches a new swap only 2 retraces after the
+  previous one at 30, which holds each frame two fields and lets the
+  scheduler start a display list at most every other retrace. The scheduler
+  and the audio manager still get every retrace (the audio frame size
+  assumes 60 a second, `audio_manager.c`). At 30 the rate scale is 1 and the
+  patches reduce to the original steps.
+- **Kill switches**: `-DWX_RATE=0` (all of 038-045 compute the N64's
+  per-frame steps); `-DWX_FPS_MODE_DEFAULT=30` (the default row value);
+  test builds take `env MX_FPS_MODE=30|60` from the autopad script.
+- **Not taken** (no effect at a 60 fps cap): the lower clamp 0.002, the f64
+  game-time shadows, the sound-event throttle, the chase-camera history
+  ring, the birdman stall-torque hold (Birdman64 measured the stall landing
+  as the N64's up to 90 Hz), the replay screen's 1/60 fade.

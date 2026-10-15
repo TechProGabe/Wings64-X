@@ -27,7 +27,7 @@
  *    title comes back without the intro (game.c's GAME_STATE_OPTIONS path).
  *
  * Rows (PLAN.md 3.4, what the port has today): Resolution, the video output (restart: `*`),
- * FPS counter, Screenshots (test builds), Stick dead zone with the raw
+ * FPS counter, Frame rate (60 / 30, applied at once; PLAN.md M5), Screenshots (test builds), Stick dead zone with the raw
  * stick's tilt next to it, Save and restart, Return. Widescreen and Buttons
  * come with their features (M7 widescreen, remapping). settings.ini is
  * written on leaving when something changed (settings.c).
@@ -250,7 +250,7 @@ static void out_text(char* buf, int out) {
 
 /* ------------------------------------------------------------------ the panel */
 
-enum { ROW_VIDEO, ROW_FPS, ROW_SHOTS, ROW_DEADZONE, ROW_RESTART, ROW_RETURN, ROW_FILTER, ROW_AA, ROW_RUMBLE };
+enum { ROW_VIDEO, ROW_FPS, ROW_SHOTS, ROW_DEADZONE, ROW_RESTART, ROW_RETURN, ROW_FILTER, ROW_AA, ROW_RUMBLE, ROW_RATE };
 
 static const char* const k_filter_names[] = { "N64", "Smooth", "Sharp" };
 static const char* const k_aa_names[] = { "Off", "2x", "4x" };
@@ -258,7 +258,7 @@ static const char* const k_aa_names[] = { "Off", "2x", "4x" };
 /* optionsInitMain: menuCreateItems(80, ...); the panel starts further left
    so the value column and the stick readout fit on the 320-wide screen */
 #define PANEL_X 48
-#define MAX_ROWS 10
+#define MAX_ROWS 12
 #define ROW_CAP 44   /* FONT_MAX_MSG_LEN (US) */
 #define REPEAT_FIRST 24   /* retraces held before the dead zone repeats */
 #define REPEAT_EVERY 6
@@ -289,6 +289,8 @@ static const char* row_label(s32 kind) {
         return "Rumble";
     case ROW_FPS:
         return "FPS counter";
+    case ROW_RATE:
+        return "Frame rate";
     case ROW_SHOTS:
         return "Screenshots";
     case ROW_DEADZONE:
@@ -331,6 +333,9 @@ static void panel_set_row(s32 idx) {
     case ROW_FPS:
         snprintf(v, sizeof v, "%s", g_wx_settings.fps ? "On" : "Off");
         break;
+    case ROW_RATE:
+        snprintf(v, sizeof v, "%d", g_wx_settings.fps_mode == 30 ? 30 : 60);
+        break;
     case ROW_SHOTS:
         snprintf(v, sizeof v, "%s", g_wx_settings.screenshots ? "On" : "Off");
         break;
@@ -366,6 +371,7 @@ static void panel_init(void) {
     sPanelRowKind[sPanelCount++] = ROW_FILTER;
     sPanelRowKind[sPanelCount++] = ROW_RUMBLE;
     sPanelRowKind[sPanelCount++] = ROW_FPS;
+    sPanelRowKind[sPanelCount++] = ROW_RATE;
     if (XHW_TEST_BUILD) sPanelRowKind[sPanelCount++] = ROW_SHOTS;   /* PLAN.md 3.4: test builds only */
     sPanelRowKind[sPanelCount++] = ROW_DEADZONE;
     sPanelRowKind[sPanelCount++] = ROW_RESTART;
@@ -423,6 +429,10 @@ static void panel_change(s32 idx, s32 dir) {
         g_wx_settings.fps = !g_wx_settings.fps;
         wx_settings_apply_fps();
         break;
+    case ROW_RATE:   /* applied at the next retrace (os_shim.c vi_thread) */
+        g_wx_settings.fps_mode = g_wx_settings.fps_mode == 30 ? 60 : 30;
+        xhw_logf("[SETTINGS] frame rate %d", g_wx_settings.fps_mode);
+        break;
     case ROW_SHOTS:
         g_wx_settings.screenshots = !g_wx_settings.screenshots;
         xhw_pad_set_shots(g_wx_settings.screenshots);
@@ -456,10 +466,11 @@ static void panel_dpad_move(s32 cur) {
 
 static void panel_save(void) {
     if (!sDirty) return;
-    xhw_logf("[SETTINGS] output %s, anti-aliasing %s, texture filter %s, rumble %d, fps %d, screenshots %d, "
-             "stick dead zone %d%%",
+    xhw_logf("[SETTINGS] output %s, anti-aliasing %s, texture filter %s, rumble %d, fps %d, frame rate %d, "
+             "screenshots %d, stick dead zone %d%%",
              k_out_names[g_wx_settings.output], k_aa_names[g_wx_settings.aa], k_filter_names[g_wx_settings.tex_filter],
-             g_wx_settings.rumble, g_wx_settings.fps, g_wx_settings.screenshots, g_wx_settings.stick_deadzone);
+             g_wx_settings.rumble, g_wx_settings.fps, g_wx_settings.fps_mode, g_wx_settings.screenshots,
+             g_wx_settings.stick_deadzone);
     wx_settings_save();
     sDirty = 0;
 }

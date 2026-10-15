@@ -1,0 +1,55 @@
+--- a/src/app/birdman0.c
++++ b/src/app/birdman0.c
+@@ -17,6 +17,12 @@
+ #include "snap.h"
+ #include "snd.h"
+ #include "task.h"
++#ifdef WINGS64_XBOX
++#include <wings64_rate.h>
++
++// DIVERGES: frame rate (patches/043): decay time still to skip after the last flap.
++static f32 sWxFlapHold;
++#endif
+ 
+ Unk803599D0 D_80359390;
+ u8 D_803593E4;
+@@ -196,6 +202,31 @@
+         if (bmData->unk2D4 > 1.5707f) {
+             bmData->unk2D4 = 1.5707f;
+         }
++#ifdef WINGS64_XBOX
++        // DIVERGES: frame rate (patches/043): a flap (A/B press frame) adds 9 * dt once and
++        // skips that frame's decays: an N64 frame's impulse and an N64 frame without
++        // decay at 30 fps, half of both at 60, where flapping barely climbs and a landed
++        // bird cannot take off again (lift ~ unk2D0 ** 2; Birdman64's playtest, MIT).
++        // Add an N64 frame's impulse and skip an N64 frame of decay time after each press.
++        if (sp68 != 0) {
++            bmData->unk2D0 += 9.0f * wx_rate_impulse_dt(D_8034F854);
++            if (bmData->unk2D0 > 3.8f) {
++                bmData->unk2D0 = 3.8f;
++            }
++            sWxFlapHold = wx_rate_impulse_dt(D_8034F854);
++        }
++        if (sWxFlapHold >= D_8034F854) {
++            sWxFlapHold -= D_8034F854;
++        } else {
++            f32 wxDt = D_8034F854;
++
++            D_8034F854 -= sWxFlapHold; // func_80313AF4 reads the frame time from here
++            sWxFlapHold = 0.0f;
++            bmData->unk2D0 = func_80313AF4(0.0f, bmData->unk2D0, 0.5f);
++            bmData->unk2D4 = func_80313AF4(0.0f, bmData->unk2D4, 0.4f);
++            D_8034F854 = wxDt;
++        }
++#else
+         if (sp68 != 0) {
+             bmData->unk2D0 += 9.0f * D_8034F854;
+             if (bmData->unk2D0 > 3.8f) {
+@@ -205,6 +236,7 @@
+             bmData->unk2D0 = func_80313AF4(0.0f, bmData->unk2D0, 0.5f);
+             bmData->unk2D4 = func_80313AF4(0.0f, bmData->unk2D4, 0.4f);
+         }
++#endif
+         if (gameState != GAME_STATE_RESULTS) {
+             bird_802CEDF8(bmData);
+         }

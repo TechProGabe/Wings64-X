@@ -45,7 +45,7 @@ void ocx_pb_layout(unsigned* out);  /* tools/xbox/patch_pbkit.py */
 #define XGFX_OVERLAP 1        /* the wait for the GPU is at the next frame's first use, not in the present */
 #endif
 #ifndef XGFX_SHADOW_MARK
-#define XGFX_SHADOW_MARK 1   /* shadow volume mark pass: 1 colour on, blended (0, 1); 0 colour writes off (debug.txt shadow_mark) */
+#define XGFX_SHADOW_MARK 0   /* shadow mark pass: 0 colour writes off; 1 colour on, blended (0, 1); 2 also depth (debug.txt shadow_mark; A/Bs from before CONTROL0's stencil write bit was found) */
 #endif
 static int s_mark_mode = XGFX_SHADOW_MARK;
 static int s_shadow_dbg;   /* debug.txt shadow_debug: 1 draws the marks instead of the shadow */
@@ -616,7 +616,14 @@ static void vtx_arrays(uint32_t base_phys) {
 /* ======================================================================
  * Frame
  * ====================================================================== */
-#define CONTROL0 NV097_SET_CONTROL0_TEXTURE_PERSPECTIVE_ENABLE   /* a z-buffer, not pbkit's w-buffer (Melee-X) */
+/* a z-buffer, not pbkit's w-buffer (Melee-X); and stencil writes on: the
+ * console honours CONTROL0's STENCIL_WRITE_ENABLE (xemu doesn't), so without
+ * it the shadow volumes' mark pass wrote nothing and every volume drew as a
+ * solid column (console runs 1-8). -DXGFX_STENCIL_WRITE=0 leaves it off. */
+#ifndef XGFX_STENCIL_WRITE
+#define XGFX_STENCIL_WRITE 1
+#endif
+#define CONTROL0 (NV097_SET_CONTROL0_TEXTURE_PERSPECTIVE_ENABLE |                   (XGFX_STENCIL_WRITE ? NV097_SET_CONTROL0_STENCIL_WRITE_ENABLE : 0))
 #define PCRTC_START_REG (*(volatile uint32_t*)0xFD600800)
 static int s_frame_open;
 static uint32_t s_depth_phys;

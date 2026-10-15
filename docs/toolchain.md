@@ -46,8 +46,8 @@ XBOX_LTO=1 tools/xbox/msys/build.sh    # ThinLTO over the game code
 built with LLVM 21 from apt.llvm.org, Debian; `patch` comes with
 build-essential). The decomp is fetched on the host first
 (`tools/xbox/fetch_decomp.sh`); the container sees the checkout at `/src`.
-M0 copied the Docker files from Melee-X and they still name `melee-x:sdk`
-and its `disc_lower` step: aligning them on `wings64-x:sdk` is open (handoff).
+The image is `wings64-x:sdk` (`docker build -t wings64-x:sdk tools/xbox/docker`),
+with no `disc_lower` step (M10; CI uses `tools/xbox/setup.sh` on the runner instead).
 
 ## The game triple
 

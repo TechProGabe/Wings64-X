@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Pack Wings64-X and your own Pilotwings 64 ROM into one Xbox disc image (XISO)
+# to burn to a DVD-R for a modded Xbox, or to load in xemu.
+#
+#   tools/make-xiso <folder with default.xbe> <your Pilotwings 64 ROM> [out.iso]
+#
+#   tools/make-xiso Wings64-X "Pilotwings 64 (U).z64" Wings64-X.iso
+#
+# The ROM must be the 8 MB US cartridge image (.z64, .n64, .v64, .rom or .bin);
+# the console checks its SHA-1 at boot and refuses anything else (docs/rom.md).
+# The image is the ROM plus the game: check the size it prints against your blank media.
+#
+# Packs with xdvdfs (https://github.com/antangelo/xdvdfs) or extract-xiso,
+# whichever is on PATH. Runs locally on your files only; nothing is
+# downloaded. From Melee-X's tools/make-xiso of the same name.
+set -euo pipefail
+src="${1:?usage: make-xiso <folder with default.xbe> <ROM file> [out.iso]}"
+rom="${2:?usage: make-xiso <folder with default.xbe> <ROM file> [out.iso]}"
+out="${3:-Wings64-X.iso}"
+[ -f "$src/default.xbe" ] || { echo "no default.xbe in $src" >&2; exit 1; }
+[ -f "$rom" ] || { echo "no such ROM: $rom" >&2; exit 1; }
+case "$(echo "${rom##*.}" | tr 'A-Z' 'a-z')" in
+    z64|n64|v64|rom|bin) ;;
+    *) echo "the ROM should be a .z64, .n64, .v64, .rom or .bin" >&2; exit 1 ;;
+esac
+size="$(wc -c < "$rom" | tr -d ' ')"
+[ "$size" = 8388608 ] || { echo "this is not an 8 MB Pilotwings 64 ROM (size $size bytes)" >&2; exit 1; }
+
+# stage next to the output: default.xbe, the dashboard icon, your ROM
+outdir="$(cd "$(dirname "$out")" && pwd)"
+stage="$(mktemp -d "$outdir/.wings64-x-xiso.XXXXXX")"
+trap 'rm -rf "$stage"' EXIT
+cp "$src/default.xbe" "$stage/"
+[ -f "$src/default.tbn" ] && cp "$src/default.tbn" "$stage/"
+# hard link the ROM when it's on the same drive, else copy it
+ln "$rom" "$stage/$(basename "$rom")" 2>/dev/null || cp "$rom" "$stage/"
+
+# relative paths from the output's folder (Git Bash would otherwise hand
+# Windows tools /c/... paths)
+name="$(basename "$out")"
+rm -f "$out"
+if command -v xdvdfs >/dev/null 2>&1; then
+    (cd "$outdir" && xdvdfs pack "$(basename "$stage")" "$name")
+elif command -v extract-xiso >/dev/null 2>&1; then
+    (cd "$outdir" && extract-xiso -c "$(basename "$stage")" "$name" >/dev/null)
+else
+    echo "need xdvdfs (https://github.com/antangelo/xdvdfs/releases) or extract-xiso on your PATH" >&2
+    exit 1
+fi
+echo "wrote $outdir/$name ($(du -h "$outdir/$name" | cut -f1))"

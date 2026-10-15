@@ -1,25 +1,21 @@
 #!/usr/bin/env bash
-# One-time toolchain setup for Melee-X (Linux x86-64 host).
+# One-time toolchain setup for Wings64-X (Linux x86-64 host; CI uses it too).
 #
-#   LLVM 21   -> $LLVM      (default /opt/llvm21): clang/lld for nxdk and the
-#                           game, plus LibTooling for tools/lower/disc_lower
+#   LLVM 21   -> $LLVM      (default /opt/llvm21): clang/lld for nxdk and the game
 #   nxdk      -> $NXDK_DIR  (default /opt/nxdk), pinned below, built with LLVM 21
-#   disc_lower-> $DISC_LOWER (default /opt/melee-tools/disc_lower)
 #
 # Host packages: build-essential cmake ninja-build git bison flex python3
-# libzstd-dev zlib1g-dev libxml2-dev.
+# libzstd-dev zlib1g-dev libxml2-dev. No disc_lower step: the port has no
+# lowering pass (PLAN.md D3).
 #
 # LLVM 21, not the distro clang: nxdk warns that 19.x-20.1.2 miscompile
-# (llvm/llvm-project#134607), and the prebuilt release ships the clang
-# libraries disc_lower links against.
+# (llvm/llvm-project#134607).
 set -euo pipefail
 
 LLVM="${LLVM:-/opt/llvm21}"
 NXDK_DIR="${NXDK_DIR:-/opt/nxdk}"
-DISC_LOWER="${DISC_LOWER:-/opt/melee-tools/disc_lower}"
 LLVM_VERSION=21.1.8
 NXDK_SHA=58427c078b4ccb0121f359b6b6c536b3b2914976
-root="$(cd "$(dirname "$0")/../.." && pwd)"
 jobs="$(nproc)"
 
 if [ ! -x "$LLVM/bin/clang" ]; then
@@ -42,11 +38,4 @@ if [ ! -f "$NXDK_DIR/lib/libpdclib.lib" ]; then
    make -C "$NXDK_DIR" NXDK_ONLY=y NXDK_SDL=y NXDK_CXX=y -j"$jobs")
 fi
 
-echo "== disc_lower -> $DISC_LOWER"
-mkdir -p "$(dirname "$DISC_LOWER")"
-# shellcheck disable=SC2046
-"$LLVM/bin/clang++" -std=c++20 -O1 -fno-rtti "$root/tools/lower/disc_lower.cpp" \
-  -I"$LLVM/include" -L"$LLVM/lib" -Wl,-rpath,"$LLVM/lib" \
-  -lclang-cpp $("$LLVM/bin/llvm-config" --libs --system-libs) -o "$DISC_LOWER"
-
-echo "done. export NXDK_DIR=$NXDK_DIR LLVM=$LLVM DISC_LOWER=$DISC_LOWER"
+echo "done. export NXDK_DIR=$NXDK_DIR LLVM=$LLVM"

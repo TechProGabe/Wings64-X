@@ -26,11 +26,9 @@ RUN dpkg --add-architecture i386 && apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libc6:i386 libstdc++6:i386 \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
-# Melee-X extras: clang/LLVM dev files for tools/lower/disc_lower (LibTooling),
-# and GCC (tools/lower/test_lower.py uses its scalar_storage_order as the
-# oracle). extract-xiso for xemu test discs comes with nxdk's tools.
+# zstd/zlib/xml for nxdk's tools; python3-pip for the host-side scripts.
 ARG LLVM=21
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      libclang-${LLVM}-dev libclang-cpp${LLVM}-dev llvm-${LLVM}-dev libzstd-dev zlib1g-dev libxml2-dev python3-pip \
+      libzstd-dev zlib1g-dev libxml2-dev python3-pip \
  && rm -rf /var/lib/apt/lists/*
 ENV LLVM=/usr/lib/llvm-${LLVM}

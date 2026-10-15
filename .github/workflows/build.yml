@@ -1,0 +1,87 @@
+# Builds default.xbe (ThinLTO, as every build is) and runs the host tests on
+# every push and pull request. No ROM is involved anywhere in this workflow:
+# the decomp is fetched and patched (tools/xbox/fetch_decomp.sh), the XBE reads
+# the user's own ROM at runtime. A tag v* also publishes a GitHub release with
+# Wings64-X-<tag>.zip (tools/xbox/package_release.py) and the link map.
+name: build
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  xbe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: write   # the release step only; the GITHUB_TOKEN is read-only on forks
+    env:
+      LLVM: /home/runner/toolchain/llvm21
+      NXDK_DIR: /home/runner/toolchain/nxdk
+      XBOX_LTO: "1"     # ThinLTO for every build (PLAN.md D3)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Host packages
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq build-essential cmake ninja-build git bison flex patch \
+            libzstd-dev zlib1g-dev libxml2-dev python3-pip
+          pip install --user --break-system-packages pillow
+
+      # LLVM and nxdk take most of the time; they only change with setup.sh
+      - name: Toolchain cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /home/runner/toolchain/llvm21
+            /home/runner/toolchain/nxdk
+          key: toolchain-${{ runner.os }}-${{ hashFiles('tools/xbox/setup.sh') }}
+
+      - name: Toolchain
+        run: tools/xbox/setup.sh
+
+      - name: Decomp at the pin, patched
+        run: tools/xbox/fetch_decomp.sh
+
+      - name: Build default.xbe
+        run: xbox/build.sh
+
+      # $$XTIMAGE section and default.tbn (as tools/xbox/msys/build.sh and docker/build.sh do)
+      - name: Dashboard icon
+        run: python3 tools/xbox/xbe_title_image.py build-xbox/xbe/default.xbe xbox/assets/logo.png build-xbox/xbe/default.tbn
+
+      - name: Tests
+        run: |
+          python3 tools/xbox/rom_leak_check.py
+          python3 tools/xbox/test_rom_check.py
+          python3 tools/xbox/test_cc.py
+          python3 tools/xbox/test_texconv.py
+          python3 tools/xbox/test_asp_hle.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wings64-x
+          path: |
+            build-xbox/xbe/default.xbe
+            build-xbox/xbe/default.tbn
+            build-xbox/wings64_x.map
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          python3 tools/xbox/package_release.py "$TAG"
+          gh release create "$TAG" "dist/Wings64-X-$TAG.zip" build-xbox/wings64_x.map \
+            --target "$GITHUB_SHA" --title "Wings64-X $TAG" --notes-file .github/release-notes.md

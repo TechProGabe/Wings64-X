@@ -1,0 +1,68 @@
+--- a/src/app/options.c
++++ b/src/app/options.c
+@@ -16,6 +16,9 @@
+ #include "snap.h"
+ #include "snd.h"
+ #include "text_data.h"
++#ifdef WINGS64_XBOX
++#include <wings64_settings.h> // PORT: the port settings panel (patches/036)
++#endif
+ 
+ STATIC_DATA f32 sVolume[] = { 0.0f, 0.2f, 0.4f, 0.6f, 1.0f };
+ STATIC_DATA s32 sStereoMono = 0;
+@@ -102,6 +105,27 @@
+     s32 count;
+ 
+     saveFileLoad(D_80362690->unkC[D_80362690->unk9C].unk8A);
++#if defined(WINGS64_XBOX) && WINGS64_SETTINGS_MENU && WINGS64_SETTINGS_IN_OPTIONS
++    // DIVERGES: "Port settings" above "Quit" (the port's settings panel); the menu starts a row lower
++    if (sGameComplete != 0) {
++        sOptionMenuItems[0] = TEXT_PHOTO_ALBUM;
++        sOptionMenuItems[1] = TEXT_SOUND_OPTIONS;
++        sOptionMenuItems[2] = TEXT_CONGURA;
++        sOptionMenuItems[3] = TEXT_QUIT; // the text is set below
++        sOptionMenuItems[4] = TEXT_QUIT;
++        count = 5;
++        menuY = 60;
++    } else {
++        sOptionMenuItems[0] = TEXT_PHOTO_ALBUM;
++        sOptionMenuItems[1] = TEXT_SOUND_OPTIONS;
++        sOptionMenuItems[2] = TEXT_QUIT; // the text is set below
++        sOptionMenuItems[3] = TEXT_QUIT;
++        count = 4;
++        menuY = 80;
++    }
++    menuCreateItems(80, menuY, 6, 1.0f, 1.0f, sOptionMenuItems, count);
++    menuSetItem(count - 2, wings64_settings_options_label());
++#else
+     if (sGameComplete != 0) {
+         sOptionMenuItems[0] = TEXT_PHOTO_ALBUM;
+         sOptionMenuItems[1] = TEXT_SOUND_OPTIONS;
+@@ -117,6 +141,7 @@
+         menuY = 100;
+     }
+     menuCreateItems(80, menuY, 6, 1.0f, 1.0f, sOptionMenuItems, count);
++#endif
+     menuUtilSetColors(MENU_COLOR_ITEM, 0xFF, 0xFF, 0xFF);
+     menuUtilSetColors(MENU_COLOR_SELECTED, 0xFF, 0xFF, 0x00);
+ }
+@@ -174,6 +199,19 @@
+     u32 temp_t7;
+ 
+     temp_v0 = menuCheckInputs();
++#if defined(WINGS64_XBOX) && WINGS64_SETTINGS_MENU && WINGS64_SETTINGS_IN_OPTIONS
++    // DIVERGES: "Port settings" (the item above "Quit") opens the port's settings panel and comes back here;
++    // "Quit" moves down a row, so it is mapped back to the game's own index
++    if (temp_v0 == (sGameComplete ? 3 : 2)) {
++        func_8032D51C(0);
++        wings64_settings_screen();
++        optionsInit();
++        return -1;
++    }
++    if (temp_v0 == (sGameComplete ? 4 : 3)) {
++        temp_v0--;
++    }
++#endif
+     temp_t7 = temp_v0 + 1;
+     if (sGameComplete) {
+         switch (temp_t7) {

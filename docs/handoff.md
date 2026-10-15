@@ -3,6 +3,17 @@
 Newest first. Each milestone entry says what was verified and how; "xemu"
 results are emulator-only (no timing, audio or memory claims from them).
 
+## M7 (part, follow-up) — "Port settings" in Option, title menu at the bottom (2026-10-15)
+
+Branch `port`; nothing pushed. Maintainer's call: the panel is "Port settings" in the game's Option menu
+(patches/036, above "Return"); the title menu is "Start game", "Option", "Exit to dashboard" at the game's
+font size, in a box at the bottom of the screen (patches/035), where the copyright line was (not drawn,
+`WINGS64_TITLE_COPYRIGHT=1` brings it back); BACK on the title still opens the panel (patches/034).
+Kill switch `WINGS64_SETTINGS_IN_OPTIONS=0` (the four-item title of the entry below). Verified in xemu
+by shots: the title (three items, faces clear), the Option menu with "Port settings", the panel from it
+and back to the Option menu, and "Exit to dashboard" (`[TITLE] Exit to dashboard`). Not checked: the
+five-item Option menu of a completed game (no save that has it).
+
 ## M7 (part) — Settings menu, "Exit to dashboard", BACK on the title, combos in every state (2026-10-15)
 
 Worktree branch off `port` (5888cf6); nothing pushed. All picture and

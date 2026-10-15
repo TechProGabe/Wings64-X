@@ -67,7 +67,9 @@ u32 wx_gfx_tasks(void);   /* os_shim.c: graphics tasks run */
 static u8 sRequested;          /* the title chose "Settings" */
 static s16 sTitleLabel[24];
 static s16 sExitLabel[24];
+static s16 sOptionsLabel[24];  /* "Port settings" in the Option menu (patches/036) */
 static s32 sTitleTextRight;    /* where the title's longest port item ends (screen x) */
+static s32 sTitleH;            /* the title menu font's height (font 6 at scale 1) */
 static int sBootOutput = -1;   /* settings.ini's output when this boot started: `*` rows compare with it */
 
 static void settings_boot_values(void) {
@@ -134,11 +136,35 @@ int wings64_settings_title_init(void) {
     uvFontSet(MENU_FONT);
     uvFontScale(1.0f, 1.0f);
     font_log();
-    glyphs(sTitleLabel, 0, ARRAY_COUNT(sTitleLabel), MENU_FONT, "Settings");
+    glyphs(sTitleLabel, 0, ARRAY_COUNT(sTitleLabel), MENU_FONT, WINGS64_SETTINGS_IN_OPTIONS ? "Port settings" : "Settings");
     glyphs(sExitLabel, 0, ARRAY_COUNT(sExitLabel), MENU_FONT, "Exit to dashboard");
     /* title_screen.c: menuCreateItems(102, ...); menuUtilRender starts the text half an "A" + 3 further */
     sTitleTextRight = 102 + uvFontWidth("A") / 2 + 3 + uvFontStr16Width(WINGS64_TITLE_EXIT ? sExitLabel : sTitleLabel);
+    sTitleH = uvFontHeight();
     return uvFontHeight() + 1;
+}
+
+/* patches/035: the title menu at the bottom. menuUtilRender puts its lowest
+ * item's text at y + font height + 1 (y up from the screen's bottom) and the
+ * game's box runs from 4 below the lowest row's top (its 76 for y 60) to 4
+ * below the top row's (its 118): the same margins, measured from the
+ * bottom edge the box is given. */
+int wings64_title_menu_y(void) {
+    return WINGS64_TITLE_MENU_BOTTOM - sTitleH + 4;
+}
+
+int wings64_title_box_bottom(void) {
+    return WINGS64_TITLE_MENU_BOTTOM;
+}
+
+int wings64_title_box_top(int items) {
+    return wings64_title_menu_y() + items * (sTitleH + 1) + sTitleH - 4;
+}
+
+/* patches/036: the Option menu's "Port settings" item */
+short* wings64_settings_options_label(void) {
+    if (!sOptionsLabel[0]) glyphs(sOptionsLabel, 0, ARRAY_COUNT(sOptionsLabel), MENU_FONT, "Port settings");
+    return sOptionsLabel;
 }
 
 short* wings64_settings_title_label(void) {

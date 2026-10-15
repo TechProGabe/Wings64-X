@@ -21,6 +21,22 @@
 #ifndef WINGS64_TITLE_EXIT
 #define WINGS64_TITLE_EXIT 1
 #endif
+/* WINGS64_SETTINGS_IN_OPTIONS (default 1; maintainer, 2026-10-15): the
+ * panel is "Port settings", an item of the game's Option menu (patches/036),
+ * and the title menu is "Start game", "Option", "Exit to dashboard" in a box
+ * at the bottom of the screen (patches/035); BACK on the title still opens
+ * the panel. 0: the title's "Settings" item and the box as patches/031 left
+ * them. WINGS64_TITLE_COPYRIGHT (default 0, patches/035): 1 keeps the
+ * title's copyright line (and the menu box at its old place). */
+#ifndef WINGS64_SETTINGS_IN_OPTIONS
+#define WINGS64_SETTINGS_IN_OPTIONS 1
+#endif
+#ifndef WINGS64_TITLE_COPYRIGHT
+#define WINGS64_TITLE_COPYRIGHT 0
+#endif
+#ifndef WINGS64_TITLE_MENU_BOTTOM
+#define WINGS64_TITLE_MENU_BOTTOM (WINGS64_TITLE_COPYRIGHT ? 40 : 18)   /* the box's bottom edge, up from the screen's */
+#endif
 
 /* Title screen (title_screen.c), with the title level loaded. Selects font 6
  * at scale 1 (as menuCreateItems does) and returns one menu row in pixels
@@ -34,6 +50,13 @@ short* wings64_title_exit_label(void);
 /* patches/031: the right edge of the title's dark box, at least `right`
  * (the game's 202), wide enough for the longest port item. */
 int wings64_title_box_right(int right);
+/* patches/035: the title menu's y (menuCreateItems) and its box's bottom and
+ * top for `items` rows, the box resting on WINGS64_TITLE_MENU_BOTTOM. */
+int wings64_title_menu_y(void);
+int wings64_title_box_bottom(void);
+int wings64_title_box_top(int items);
+/* patches/036: "Port settings" as a 16-bit glyph string of the Option menu font. */
+short* wings64_settings_options_label(void);
 /* The title item was chosen: remember it and return the game state to go to
  * (GAME_STATE_OPTIONS, whose level load the panel shares with the game's
  * Option screen). */

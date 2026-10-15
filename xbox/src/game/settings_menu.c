@@ -74,11 +74,9 @@ static s16 sOptionsLabel[24];  /* "Port settings" in the Option menu (patches/03
 static s32 sTitleTextRight;    /* where the title's longest port item ends (screen x) */
 static s32 sTitleH;            /* the title menu font's height (font 6 at scale 1) */
 static int sBootOutput = -1;   /* settings.ini's output when this boot started: `*` rows compare with it */
-static int sBootAA = -1;
 
 static void settings_boot_values(void) {
     if (sBootOutput < 0) sBootOutput = g_wx_settings.output;
-    if (sBootAA < 0) sBootAA = g_wx_settings.aa;
 }
 
 /* ------------------------------------------------------------------ glyph strings */
@@ -252,7 +250,7 @@ static void out_text(char* buf, int out) {
 
 /* ------------------------------------------------------------------ the panel */
 
-enum { ROW_VIDEO, ROW_FPS, ROW_SHOTS, ROW_DEADZONE, ROW_RESTART, ROW_RETURN, ROW_FILTER, ROW_AA, ROW_RUMBLE,
+enum { ROW_VIDEO, ROW_FPS, ROW_SHOTS, ROW_DEADZONE, ROW_RESTART, ROW_RETURN, ROW_FILTER, ROW_RUMBLE,
        ROW_PAGE_VIDEO, ROW_PAGE_CONTROLS, ROW_PAGE_SYSTEM };
 
 /* The panel is a top level ("Port settings") and three sub-menus. A page is
@@ -265,7 +263,7 @@ enum { PAGE_TOP, PAGE_VIDEO, PAGE_CONTROLS, PAGE_SYSTEM, PAGE_COUNT };
 static const s32 k_page_top[]      = { ROW_PAGE_VIDEO, ROW_PAGE_CONTROLS, ROW_PAGE_SYSTEM, ROW_RETURN };
 /* "Apply and restart" sits under the rows it applies (the `*` ones);
    System holds Screenshots (every build: maintainer, console run 8) */
-static const s32 k_page_video[]    = { ROW_VIDEO, ROW_AA, ROW_FILTER, ROW_FPS, ROW_RESTART, ROW_RETURN };
+static const s32 k_page_video[]    = { ROW_VIDEO, ROW_FILTER, ROW_FPS, ROW_RESTART, ROW_RETURN };
 static const s32 k_page_controls[] = { ROW_DEADZONE, ROW_RUMBLE, ROW_RETURN };
 static const s32 k_page_system[]   = { ROW_SHOTS, ROW_RETURN };
 
@@ -277,7 +275,6 @@ static const struct { const s32* rows; s32 count; } k_pages[PAGE_COUNT] = {
 };
 
 static const char* const k_filter_names[] = { "N64", "Sharp" };   /* Smooth dropped (maintainer, console run 6) */
-static const char* const k_aa_names[] = { "Off", "On" };   /* 2x supersampling (4x cost too much fill on the console) */
 
 /* optionsInitMain: menuCreateItems(80, ...); the panel starts further left
    so the value column and the stick readout fit on the 320-wide screen */
@@ -295,7 +292,6 @@ static s16 sLegend[ROW_CAP];
 /* the hint under the rows for the row under the cursor (font 6, one line) */
 #define ROW_KINDS (ROW_PAGE_SYSTEM + 1)
 static s16 sHint[ROW_KINDS][ROW_CAP];
-static s16 sAANote[ROW_CAP];          /* supersampling set but the resolution rules it out */
 static s16 sFilterNote[2][ROW_CAP];   /* the texture filter's hint follows its value */
 static s16 sRestartIdle[ROW_CAP];     /* Apply and restart with nothing to apply */
 static s16* sReturnText;
@@ -320,8 +316,6 @@ static const char* row_label(s32 kind) {
         return "Resolution *";
     case ROW_FILTER:
         return "Texture filter";
-    case ROW_AA:
-        return "Supersampling *";
     case ROW_RUMBLE:
         return "Rumble";
     case ROW_FPS:
@@ -337,15 +331,8 @@ static const char* row_label(s32 kind) {
     }
 }
 
-/* anti-aliasing is set but the resolution (as it will boot) is 720p/1080i:
-   there it would need 11-25 MB the console doesn't have to spare */
-static int aa_blocked(void) {
-    int r = out_resolved(g_wx_settings.output);
-    return r == XHW_OUT_720P || r == XHW_OUT_1080I;
-}
-
 static int restart_pending(void) {
-    return g_wx_settings.output != sBootOutput || g_wx_settings.aa != sBootAA;
+    return g_wx_settings.output != sBootOutput;
 }
 
 static void panel_set_row(s32 idx) {
@@ -360,11 +347,6 @@ static void panel_set_row(s32 idx) {
         break;
     case ROW_FILTER:
         snprintf(v, sizeof v, "%s", k_filter_names[g_wx_settings.tex_filter ? 1 : 0]);
-        break;
-    case ROW_AA:
-        /* supersampling needs the 640x480 32-bit frame (xgfx_set_aa): at
-           720p/1080i it says so here and in the hint under the rows */
-        snprintf(v, sizeof v, "%s", g_wx_settings.aa && aa_blocked() ? "480 only" : k_aa_names[g_wx_settings.aa ? 1 : 0]);
         break;
     case ROW_RUMBLE:
         snprintf(v, sizeof v, "%s", g_wx_settings.rumble ? "On" : "Off");
@@ -443,7 +425,6 @@ static void panel_open_page(s32 page, s32 cursor) {
 static void panel_init(void) {
     settings_boot_values();
     glyphs(sLegend, 0, ROW_CAP, MENU_FONT, "* After a restart");
-    glyphs(sAANote, 0, ROW_CAP, MENU_FONT, "Supersampling: 480 only");
     glyphs(sFilterNote[0], 0, ROW_CAP, MENU_FONT, "The game's own look");
     glyphs(sFilterNote[1], 0, ROW_CAP, MENU_FONT, "Crisp square pixels");
     glyphs(sRestartIdle, 0, ROW_CAP, MENU_FONT, "Nothing to apply yet");
@@ -451,7 +432,6 @@ static void panel_init(void) {
     glyphs(sHint[ROW_PAGE_CONTROLS], 0, ROW_CAP, MENU_FONT, "Stick and rumble");
     glyphs(sHint[ROW_PAGE_SYSTEM], 0, ROW_CAP, MENU_FONT, "Screenshots");
     glyphs(sHint[ROW_VIDEO], 0, ROW_CAP, MENU_FONT, "HD needs an HD cable");
-    glyphs(sHint[ROW_AA], 0, ROW_CAP, MENU_FONT, "Smoother edges, 480 only");
     glyphs(sHint[ROW_FPS], 0, ROW_CAP, MENU_FONT, "Frame rate, top left");
     glyphs(sHint[ROW_RESTART], 0, ROW_CAP, MENU_FONT, "Restarts to apply *");
     glyphs(sHint[ROW_DEADZONE], 0, ROW_CAP, MENU_FONT, "Ignores small stick drift");
@@ -472,9 +452,6 @@ static void panel_change(s32 idx, s32 dir) {
     case ROW_FILTER:
         g_wx_settings.tex_filter = !g_wx_settings.tex_filter;
         xgfx_set_tex_filter(g_wx_settings.tex_filter ? 2 : 0);   /* the back end's 0 N64, 2 sharp */
-        break;
-    case ROW_AA:
-        g_wx_settings.aa = !g_wx_settings.aa;
         break;
     case ROW_RUMBLE:
         g_wx_settings.rumble = !g_wx_settings.rumble;
@@ -517,9 +494,9 @@ static void panel_dpad_move(s32 cur) {
 
 static void panel_save(void) {
     if (!sDirty) return;
-    xhw_logf("[SETTINGS] output %s, anti-aliasing %s, texture filter %s, rumble %d, fps %d, screenshots %d, "
+    xhw_logf("[SETTINGS] output %s, texture filter %s, rumble %d, fps %d, screenshots %d, "
              "stick dead zone %d%%",
-             k_out_names[g_wx_settings.output], k_aa_names[g_wx_settings.aa ? 1 : 0], k_filter_names[g_wx_settings.tex_filter ? 1 : 0],
+             k_out_names[g_wx_settings.output], k_filter_names[g_wx_settings.tex_filter ? 1 : 0],
              g_wx_settings.rumble, g_wx_settings.fps, g_wx_settings.screenshots, g_wx_settings.stick_deadzone);
     wx_settings_save();
     sDirty = 0;
@@ -611,19 +588,15 @@ static s32 panel_update(void) {
     return -1;
 }
 
-/* under the rows: the hint for the row under the cursor (why supersampling
-   is off at 720p/1080i, what the texture filter picked does, ...), else on
-   the Video page what the `*` means */
+/* under the rows: the hint for the row under the cursor (what the texture
+   filter picked does, ...), else on the Video page what the `*` means */
 static void panel_draw_legend(void) {
     s32 cur = menuUtilGetCurItem(), kind = cur >= 0 && cur < sPanelCount ? sPanelRowKind[cur] : -1;
     s16* line = NULL;
     int warn = 0;
     uvFontSet(MENU_FONT);
     uvFontScale(1.0f, 1.0f);
-    if (kind == ROW_AA && g_wx_settings.aa && aa_blocked()) {
-        line = sAANote;
-        warn = 1;
-    } else if (kind == ROW_FILTER) {
+    if (kind == ROW_FILTER) {
         line = sFilterNote[g_wx_settings.tex_filter ? 1 : 0];
     } else if (kind == ROW_RESTART) {
         line = restart_pending() ? sHint[ROW_RESTART] : sRestartIdle;

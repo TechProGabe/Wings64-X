@@ -52,11 +52,6 @@ void wx_boot(const uint8_t* rom, uint32_t size) {
     wx_settings_load();
     xhw_video_set_pref(g_wx_settings.output, g_wx_settings.progressive);
     xhw_video_boot();
-#ifdef WX_AA_FORCE   /* tests: -DWX_AA_FORCE=1|2|4 over settings.ini */
-    xgfx_set_aa(WX_AA_FORCE);
-#else
-    xgfx_set_aa(g_wx_settings.aa ? 2 : 1);
-#endif
     xgfx_init();
     xgfx_set_tex_filter(g_wx_settings.tex_filter ? 2 : 0);
     wx_settings_apply_fps();

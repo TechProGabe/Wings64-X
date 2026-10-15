@@ -116,7 +116,6 @@ the save folder, a constant in `xhw_internal.h`.
 | `XGFX_DEBUG_NOCULL` | undefined | debug: no face culling | `f3d_interp.c` |
 | `XGFX_DEBUG_NOCLIPCULL` | undefined | debug: no clip-stage culling | `f3d_interp.c` |
 | `XGFX_SELFTEST` | undefined | `=1`: the back end on its own (`xgfx_selftest.c`), instead of the game; `[SELFTEST]` lines, `[FBDUMP]` of frames 30 and 90 | `boot.c`, `xgfx_selftest.c` |
-| `WX_AA_FORCE` | undefined | `=1|2|4`: anti-aliasing over `settings.ini` (2x, 4x supersampling) | `xbox/src/game/boot.c` |
 | `XBUILTIN_OFF` | undefined | not defined: `xbuiltin.h` makes constant-size `mem*` and `sqrtf` inline; `xhw_string.c` defines it | `xbox/include/xbuiltin.h` |
 
 `XGFX_MIPS` appears only in a comment (the Phase B mip option); `XGX_*` appear
@@ -356,8 +355,8 @@ stalled`, `the back buffer stayed on screen`: the flip-race diagnostics (test
 builds). `GPU stalled: get put dma_state pgraph ...`:
 the GPU's pusher state at a stall. `first GPU fault: kind ...`: the first
 PGRAPH or DMA fault with the pushbuffer words around `get` (`nv2a_fault.c`).
-`frames with fewer than 3 draws`: thin frames. `anti-aliasing 2x|4x ...`: the
-supersampling decision (rendering size, or off for memory or mode).
+`frames with fewer than 3 draws`: thin frames. (Supersampling and its
+`anti-aliasing` line were removed.)
 `tiles: XGFX_TILE ...`: the tile and zcomp registers at start.
 
 **`[GFX] frame N state S: tris T, rejected R, culled C, clipped L | vtx loads V, mtx M`**

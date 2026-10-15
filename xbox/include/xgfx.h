@@ -73,7 +73,7 @@ typedef struct {
     int32_t fb_w, fb_h;          /* framebuffer */
     int32_t bpp;                 /* 32, or 16 at 720p/1080i */
     float zmax;                  /* depth-buffer units at the far plane (2^24 - 1 for Z24S8) */
-    int32_t xscale;              /* framebuffer pixels per screen pixel across: 2 with 2x supersampling, else 1 */
+    int32_t xscale;              /* framebuffer pixels per screen pixel across: 1 (2 was 2x supersampling, removed) */
 } XgfxOutput;
 
 /* ---- back end (hw) ---- */
@@ -93,9 +93,7 @@ void xgfx_set_fps_overlay(int on);
  * choice), 1 smooth (bilinear through a 3x3 Gaussian), 2 sharp (point).
  * At once. */
 void xgfx_set_tex_filter(int mode);
-/* Anti-aliasing by supersampling: 1 off, 2 (2x wide), 4 (2x2). Before
- * xgfx_init; only at 640x480 32-bit (else off). */
-void xgfx_set_aa(int samples);
+
 
 /* Textures: w and h powers of two (1..1024), rows of A8R8G8B8 texels
  * (0xAARRGGBB in a native uint32). Returns 0 when the pool is full (after

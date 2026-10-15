@@ -66,18 +66,17 @@ Your dashboard decides what your TV and cables can handle, and Wings64-X never g
 
 ## Settings
 
-Press **Back** on the title screen and the settings panel opens. It's also in the game's **Option** menu as "Port settings". Up and down pick a row; left and right (or A) change it; B or Return leaves the panel, and the settings are saved when something changed. A row marked `*` takes effect after a restart: **Save and restart** does that for you when one is pending, and the Resolution row shows what you'll actually get, like `480p > 480i`.
+Press **Back** on the title screen and the settings panel opens. It's also in the game's **Option** menu as "Port settings". The panel has three pages: **Video**, **Controls** and **System**. Up and down pick a row; left and right (or A) change it; B or Return goes back a page, and the settings are saved when you leave the panel. The line under the rows says what the row under the cursor does.
 
-| row | what it does |
-|---|---|
-| Resolution `*` | Auto, 480i, 480p, 720p or 1080i. The dashboard limits apply |
-| Anti-aliasing `*` | Off, 2x or 4x supersampling. It works at 480 only; at 720p and 1080i it shows `> Off` |
-| Texture filter | N64 (the default), Smooth or Sharp. Applies at once |
-| Rumble | On or off. The controller also rumbles on a crash |
-| FPS counter | Frames per second in the top left corner. Applies at once |
-| Stick dead zone | 0 to 60 %, in steps of 5 (default 20 %). A live readout shows how far the stick is tilted, so you can pick a value for your controller |
-| Save and restart | Restarts the port when a `*` row changed; otherwise it does the same as Return |
-| Return | Leaves the panel |
+| page | row | what it does |
+|---|---|---|
+| Video | Resolution `*` | Auto, 480i, 480p, 720p or 1080i, within what your dashboard and cable allow; it shows what you'll actually get, like `720p > 480i` |
+| Video | Texture filter | N64 (the game's own look, the default) or Sharp (crisp square pixels). Applies at once |
+| Video | FPS counter | Frames per second in the top left corner. Applies at once |
+| Video | Apply and restart | Restarts the port to apply the rows marked `*`; it does nothing when none changed |
+| Controls | Stick dead zone | 0 to 60 %, in steps of 5 (default 20 %). A live readout shows how far the stick is tilted, so you can pick a value for your controller |
+| Controls | Rumble | On or off: the controller rumbles when you crash |
+| System | Screenshots | Off by default. On: **Back** during play saves a picture to `E:\UDATA\57580001\` |
 
 Everything the panel changes lives in `E:\UDATA\57580001\settings.ini`, which you can also edit over FTP. It's written with the defaults on the first start. Delete it to get the defaults back.
 

@@ -195,8 +195,8 @@ the TSC.
   tile is set, so the CPU can read it (`fb_cpu`).
 - **Combiners, blend, depth, stencil** are set by the interpreter's per-draw
   state (`xgfx.h`); `nv2a_cc.c` compiles the N64 combiner to register combiners.
-- **Antialiasing**: supersampling (2x or 4x) renders larger and resolves at
-  present; only at 640x480 32-bit, and only when contiguous memory is there.
+- **Antialiasing**: none. 2x/4x supersampling was tried and removed (console
+  runs 5-9: too heavy for the NV2A at the title, no visible gain).
 
 The interpreter and this back end are described in `docs/renderer.md` and
 `docs/architecture.md`.

@@ -1,0 +1,25 @@
+# build output
+/build-xbox*/
+/build/
+__pycache__/
+*.pyc
+
+# the decomp is fetched and patched here (tools/xbox/fetch_decomp.sh), never committed
+/external/
+
+# never commit ROM material, saves, console dumps or emulator firmware (CLAUDE.md)
+*.z64
+*.n64
+*.v64
+*.rom
+*.bin
+*.eep
+baserom*
+*.iso
+*.xiso
+*.qcow2
+*.img
+*.bmp
+
+# release zips (tools/xbox/package_release.py)
+/dist/

@@ -11,6 +11,9 @@ void f3d_tex_reset(void);
 /* Screen fades (patches/026): 1 keeps the picture presented last under every
  * following frame, 0 ends it. Taken at the next frame (any thread may call). */
 void f3d_hold_last(int on);
+/* The photo album (patches/028): 1 keeps the picture presented last under
+ * every following frame, 0 ends it. */
+void f3d_fb_persist(int on);
 
 /* ---- hooks (xbox/src/game) ---- */
 /* An address as a display list holds it -> a host pointer (rdram.c: the

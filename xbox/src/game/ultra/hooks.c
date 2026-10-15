@@ -16,14 +16,14 @@
 
 /* ---- patches/026, 028: frame-buffer persistence ---- */
 /* patches/026: the fades draw over the last frame (f3d_interp.c hold_frame;
- * kill switch -DXGFX_HOLD_LAST=0). DIVERGES (028, until M8): the album draws
- * over whatever the colour buffer holds. */
+ * kill switch -DXGFX_HOLD_LAST=0); patches/028: the album's persistent frame
+ * (f3d_interp.c, -DXGFX_FB_PERSIST=0). */
 void wings64_fb_freeze(int on) {
     f3d_hold_last(on);
 }
 
 void wings64_fb_persist(int on) {
-    (void)on;
+    f3d_fb_persist(on);
 }
 
 /* ---- patches/022: the audio command list (M6: the RSP audio HLE, PLAN.md D6) ---- */

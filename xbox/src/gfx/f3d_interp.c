@@ -48,6 +48,9 @@
 #ifndef XGFX_SCISSOR
 #define XGFX_SCISSOR 1         /* small scissors and viewports (photo album thumbnails) honoured */
 #endif
+#ifndef XGFX_Z_REL
+#define XGFX_Z_REL 1           /* the tie-break and decal bias as a fraction of distance; 0: polygon offset units */
+#endif
 #ifndef XGFX_Z_TIEBREAK
 #define XGFX_Z_TIEBREAK 1      /* later coplanar draw states win depth ties, as on the RDP */
 #endif
@@ -317,6 +320,7 @@ static void map_setup(void) {
 /* ------------------------------------------------------------- draw state */
 
 static XgfxState s_st;           /* the state the batch below is drawn with */
+static float s_zrel;             /* XGFX_Z_REL: this state's depth bias, a fraction of the distance */
 static uint32_t s_epoch = 1, s_st_epoch;
 #define DIRTY() (s_epoch++)
 static int s_textured, s_tex1, s_decal, s_overlay, s_shadow_pass2;
@@ -580,12 +584,22 @@ static void pixel_state(int depth_override_always) {
 #endif
     s_decal = ((rm >> 10) & 3) == 3;
     s_st.depth_bias = 0;
+    s_zrel = 0.0f;
     if (s_st.depth_func == XGFX_DEPTH_LEQUAL) {
         /* DIVERGES: later depth-tested states are pulled toward the eye by a
          * step each (64 at most), so coplanar layers (the landing pads'
          * bullseye) resolve to the later draw as on the RDP */
         if (XGFX_Z_TIEBREAK && s_zorder < 64) s_zorder++;
         s_st.depth_bias = (XGFX_Z_TIEBREAK ? s_zorder : 0) + (s_decal ? 16u : 0u);
+        if (XGFX_Z_REL) {
+            /* DIVERGES: the bias is a fraction of the distance (2^-16 per
+             * step, as wings64-dc's), applied to the vertices' depth in
+             * to_out; a polygon offset of that many Z24 steps is nothing at
+             * a distance and the landing target's bullseye striped on the
+             * console (runs 1-3; xemu's float depth hid it) */
+            s_zrel = (float)s_st.depth_bias * (1.0f / 65536.0f);
+            s_st.depth_bias = 0;
+        }
     }
     s_st.color_write = 1;
     s_st.stencil = XGFX_STENCIL_OFF;
@@ -652,6 +666,7 @@ static void draw_state(void) {
         s_st.alpha_ref = 0;
         s_st.depth_func = XGFX_DEPTH_LEQUAL;
         s_st.depth_bias = 0;
+        s_zrel = 0.0f;
     } else if (s_shadow_pass2) {
         s_st.stencil = XGFX_STENCIL_TEST;
     }
@@ -668,6 +683,13 @@ static uint8_t to8(float f) {
 static void to_out(const Vtx* v, XgfxVtx* o, const Vtx* flat) {
     float iw = 1.0f / v->w;
     float z01 = (v->z * iw + 1.0f) * 0.5f;
+    if (s_zrel > 0.0f && R.proj[2][3] < -1e-6f) {
+        /* nearer by s_zrel of the eye distance: depth tends to A far away
+         * (A = (1 + P22/P23)/2 for a perspective P, scale included), and a
+         * point at w * (1 - f) lies (A - z01) * f nearer */
+        float a = 0.5f * (1.0f + R.proj[2][2] / R.proj[2][3]);
+        z01 -= (a - z01) * s_zrel;
+    }
     const Vtx* c = flat ? flat : v;
     o->x = (R.vp_tx + v->x * iw * R.vp_sx) * s_sx + s_ox;
     o->y = (R.vp_ty - v->y * iw * R.vp_sy) * s_sy + s_oy;
@@ -1252,6 +1274,16 @@ static int s_hold_linear;   /* s_hold_tex is the GPU hold surface (texel coordin
 
 void f3d_hold_last(int on) { s_hold_req = XGFX_HOLD_LAST && on; }
 
+/* patches/028: the photo album draws each photo once and relies on the N64
+ * frame buffer keeping it. DIVERGES: while it asks, every frame starts with
+ * the picture presented last (a linear view of that buffer, no copy: it is
+ * not drawn into again for two frames), so what was drawn stays. */
+#ifndef XGFX_FB_PERSIST
+#define XGFX_FB_PERSIST 1
+#endif
+static volatile int s_persist;
+void f3d_fb_persist(int on) { s_persist = XGFX_FB_PERSIST && on; }
+
 #ifndef XGFX_HOLD_GPU
 #define XGFX_HOLD_GPU 1   /* 0: the CPU reads the last frame back (~244 ms a fade on the console) */
 #endif
@@ -1307,7 +1339,17 @@ static void hold_frame(void) {
                      (unsigned)((xhw_time_us() - t0) / 1000u));
         if (s_hold_on && !s_hold_tex) xhw_log("[GFX] hold: the last frame could not be captured (pool full)");
     }
-    if (!s_hold_tex) return;
+    if (!s_hold_tex) {
+        if (s_persist) {
+            float w, h;
+            uint32_t last = xgfx_tex_linear_last(&w, &h);
+            if (last) {
+                hold_quad(last, w, h, 0);
+                xgfx_tex_destroy(last);
+            }
+        }
+        return;
+    }
     hold_quad(s_hold_tex, s_hold_u, s_hold_v, !s_hold_linear && s_hold_u * (float)s_out.fb_w > 1024.0f);
 }
 

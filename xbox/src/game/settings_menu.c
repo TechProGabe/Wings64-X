@@ -203,6 +203,7 @@ void wings64_title_exit(void) {
     xhw_exit_reason(WINGS64_SETTINGS_IN_OPTIONS ? "exit to the dashboard from the Option menu"
                                                 : "exit to the dashboard from the title menu");
     xhw_sleep_ms(300);   /* the confirm sound */
+    wx_pad_quiesce();
     xhw_quit_to_dashboard();
 }
 
@@ -451,6 +452,7 @@ static s32 panel_update(void) {
             xhw_logf("[SETTINGS] save and restart: output %s", k_out_names[g_wx_settings.output]);
             xhw_exit_reason("restart from the settings menu");
             xhw_sleep_ms(300);   /* the confirm sound */
+            wx_pad_quiesce();
             xhw_reboot_self();
             break;
         case ROW_DEADZONE:

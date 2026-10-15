@@ -101,6 +101,9 @@ void xhw_flush(void* stdio_file);
 unsigned xhw_log_fallback(void);
 /* Two lines at the top of the picture for 10 s, any thread (logged too). */
 void xhw_notice(const char* line1, const char* line2);
+/* Test builds: an integer switch from E:\UDATA\57580001\debug.txt
+ * ("name = value"), else `def` (xhw_debug.c). Release builds: always `def`. */
+int xhw_debug_int(const char* name, int def);
 void* xhw_file_open(const char* path);
 int xhw_file_read(void* file, uint32_t off, void* dst, uint32_t len);
 uint32_t xhw_file_size(void* file);

@@ -13,7 +13,8 @@ void wx_pad_read(void* pads);
 void wx_pad_retrace(void);
 int wx_pad_stick_raw_pct(void);   /* the raw left stick's tilt, 0..100 (the settings panel's readout) */
 uint32_t wx_pad_retraces(void);   /* retraces counted by the VI thread (held-direction repeat) */
-int wx_pad_back_pressed(void);    /* BACK newly pressed on port 1, still down, not seen before */
+int wx_pad_back_pressed(void);
+void wx_pad_quiesce(void);       /* before leaving the XBE: the controllers are taken for good (no VI polling) */    /* BACK newly pressed on port 1, still down, not seen before */
 
 /* eeprom.c: the 16 Kbit EEPROM as E:\UDATA\57580001\pilotwings64.eep */
 void wx_eeprom_load(void);

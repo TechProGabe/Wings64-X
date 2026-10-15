@@ -185,12 +185,24 @@ void osCreateMesgQueue(OSMesgQueue* mq, OSMesg* msg, s32 count) {
     mq->msg = msg;
 }
 
+static OSMesgQueue* s_vi_mq;   /* osViSetEvent (below) */
+
 static s32 mesg_put(OSMesgQueue* mq, OSMesg msg, s32 flag, int jam) {
     Thr* me = flag == OS_MESG_BLOCK ? self() : NULL;
     lock();
     while (mq->validCount >= mq->msgCount) {
         if (flag == OS_MESG_NOBLOCK) {
+            static unsigned s_dropped;
             unlock();
+            if (XHW_TEST_BUILD && mq->msgCount && s_dropped++ < 40) {
+                int k;
+                char held[160];
+                int n = 0;
+                for (k = 0; k < mq->validCount && k < 8 && n < (int)sizeof held - 12; k++)
+                    n += snprintf(held + n, sizeof held - (size_t)n, " %p", mq->msg[(mq->first + k) % mq->msgCount]);
+                xhw_logf("[OS] message %p dropped: queue %p full (%d):%s (vi queue %p)", msg, (void*)mq,
+                         (int)mq->msgCount, held, (void*)s_vi_mq);
+            }
             return -1;
         }
         sleep_on(me, &mq->fullqueue, XHW_INFINITE);
@@ -345,13 +357,51 @@ static u32 s_vi_every = 1, s_retrace;
 static void* s_vi_cur;
 static void* s_vi_next;
 
+static u32 s_gfx_tasks, s_aud_tasks;
+
+#ifndef WX_VI_RESERVE
+#define WX_VI_RESERVE 2   /* free slots the retrace message leaves in the scheduler's queue; 0: always send */
+#endif
+
+/* test builds: no gfx task for 20 retraces (a third of a second) logs what
+ * every game thread waits on, once per stall (the title's first seconds:
+ * frames over a second with the CPU idle, console run 3). The wait objects
+ * are queue addresses: tools/xbox/sym.py names them. */
+static void stall_watch(void) {
+    static u32 s_tasks_seen, s_still, s_dumped;
+    int i;
+    if (!XHW_TEST_BUILD) return;
+    if (s_gfx_tasks != s_tasks_seen) {
+        s_tasks_seen = s_gfx_tasks;
+        s_still = 0;
+        s_dumped = 0;
+        return;
+    }
+    if (++s_still != 20 || s_dumped++ || !s_gfx_tasks) return;
+    xhw_logf("[OS] stall: no gfx task for 20 retraces (task %u, retrace %u)", (unsigned)s_gfx_tasks,
+             (unsigned)s_retrace);
+    for (i = 0; i < s_nthr; i++)
+        xhw_logf("[OS] stall: thread %d (N64 priority %d) waits on %p", s_thr[i].t ? (int)s_thr[i].t->id : -1,
+                 s_thr[i].t ? (int)s_thr[i].t->priority : -1, s_thr[i].wait);
+}
+
 static void vi_thread(void* arg) {
     (void)arg;
     for (;;) {
         xhw_wait_vblank();
+        stall_watch();
         s_vi_cur = s_vi_next;   /* the swap latches at the retrace */
         s_retrace++;
-        if (s_vi_mq && s_retrace % s_vi_every == 0) osSendMesg(s_vi_mq, s_vi_msg, OS_MESG_NOBLOCK);
+        /* DIVERGES: the retrace message is skipped when it would leave the
+         * scheduler's queue fewer than two free slots: the gfx task runs
+         * synchronously on the scheduler thread, retraces pile up meanwhile,
+         * and its own RSP/RDP done events (posted when the task returns)
+         * found the queue full and were lost; the game then waited ~50
+         * retraces for its RDP timeout (the title's helicopter stalls,
+         * console run 3). A late retrace message is harmless. */
+        if (s_vi_mq && s_retrace % s_vi_every == 0 &&
+            (!WX_VI_RESERVE || s_vi_mq->validCount + 1 + WX_VI_RESERVE <= s_vi_mq->msgCount))
+            osSendMesg(s_vi_mq, s_vi_msg, OS_MESG_NOBLOCK);
         wx_pad_retrace();       /* pad.c: held-direction repeat counts retraces (settings panel) */
     }
 }
@@ -434,7 +484,7 @@ s32 osPiRawReadIo(u32 devAddr, u32* data) { return pi_read_word(devAddr, data); 
 
 /* ---------------------------------------------------------------------- SP */
 
-static u32 s_gfx_tasks, s_aud_tasks;
+/* s_gfx_tasks, s_aud_tasks: above stall_watch */
 
 void osSpTaskLoad(OSTask* task) { (void)task; }
 void osSpTaskStartGo(OSTask* task) {

@@ -35,7 +35,7 @@
 #define WINGS64_TITLE_COPYRIGHT 0
 #endif
 #ifndef WINGS64_TITLE_MENU_BOTTOM
-#define WINGS64_TITLE_MENU_BOTTOM (WINGS64_TITLE_COPYRIGHT ? 40 : 18)   /* the box's bottom edge, up from the screen's */
+#define WINGS64_TITLE_MENU_BOTTOM 40   /* the box's bottom edge, up from the screen's: clear of the copyright line's band (18..34) whether it is drawn or not (maintainer) */
 #endif
 
 /* Title screen (title_screen.c), with the title level loaded. Selects font 6

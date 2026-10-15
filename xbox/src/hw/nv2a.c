@@ -44,6 +44,11 @@ void ocx_pb_layout(unsigned* out);  /* tools/xbox/patch_pbkit.py */
 #ifndef XGFX_OVERLAP
 #define XGFX_OVERLAP 1        /* the wait for the GPU is at the next frame's first use, not in the present */
 #endif
+#ifndef XGFX_SHADOW_MARK
+#define XGFX_SHADOW_MARK 1   /* shadow volume mark pass: 1 colour on, blended (0, 1); 0 colour writes off (debug.txt shadow_mark) */
+#endif
+static int s_mark_mode = XGFX_SHADOW_MARK;
+
 #ifndef XGFX_POLY_SLOPE
 #define XGFX_POLY_SLOPE 1.0f   /* polygon offset slope factor for biased (decal, tie-break) draws; 0: bias only */
 #endif
@@ -1037,6 +1042,15 @@ static void emit_fixed(const XgfxState* st) {
         SETF(F_DEPTH_FUNC, NV097_SET_DEPTH_FUNC,
              st->depth_func == XGFX_DEPTH_LESS ? 0x201 : st->depth_func == XGFX_DEPTH_ALWAYS ? 0x207 : 0x203);
     SETF(F_DEPTH_MASK, NV097_SET_DEPTH_MASK, st->depth_write ? 1 : 0);
+    if (st->stencil == XGFX_STENCIL_MARK && s_mark_mode == 1) {
+        /* the mark pass with colour writes on, blended (0, 1) so the colour
+         * stays: a draw that writes nothing at all may be skipped before the
+         * stencil stage on the console (the volumes showed as solid columns
+         * there, never in xemu; console runs 1-3) */
+        SETF(F_BLEND_EN, NV097_SET_BLEND_ENABLE, 1);
+        SETF(F_BLEND_S, NV097_SET_BLEND_FUNC_SFACTOR, 0);   /* ZERO */
+        SETF(F_BLEND_D, NV097_SET_BLEND_FUNC_DFACTOR, 1);   /* ONE */
+    } else
     SETF(F_BLEND_EN, NV097_SET_BLEND_ENABLE, st->blend != XGFX_BLEND_OFF);
     if (st->blend != XGFX_BLEND_OFF) {
         SETF(F_BLEND_S, NV097_SET_BLEND_FUNC_SFACTOR, 0x302);   /* SRC_ALPHA */
@@ -1048,7 +1062,8 @@ static void emit_fixed(const XgfxState* st) {
         SETF(F_ALPHA_REF, NV097_SET_ALPHA_REF, st->alpha_ref);
     }
     SETF(F_COLOR_MASK, NV097_SET_COLOR_MASK,
-         st->color_write ? NV097_SET_COLOR_MASK_RED_WRITE_ENABLE | NV097_SET_COLOR_MASK_GREEN_WRITE_ENABLE |
+         st->color_write || (st->stencil == XGFX_STENCIL_MARK && s_mark_mode == 1)
+                         ? NV097_SET_COLOR_MASK_RED_WRITE_ENABLE | NV097_SET_COLOR_MASK_GREEN_WRITE_ENABLE |
                                NV097_SET_COLOR_MASK_BLUE_WRITE_ENABLE | NV097_SET_COLOR_MASK_ALPHA_WRITE_ENABLE
                          : 0);
     /* shadow volumes (PLAN.md D4): pass 1 marks where the volume's back faces
@@ -1359,6 +1374,7 @@ int xgfx_init(void) {
     static int done;
     if (done) return 1;
     done = 1;
+    s_mark_mode = xhw_debug_int("shadow_mark", XGFX_SHADOW_MARK);
     for (;;) {
         vm = xhw_video();
         if (vm->bpp == 16) {

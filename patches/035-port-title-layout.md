@@ -6,7 +6,7 @@ keeps the game's two items, in a box at the bottom of the screen, where the copy
 
 **What (`app/title_screen.c`, all `DIVERGES`):**
 - With `WINGS64_SETTINGS_IN_OPTIONS` (default 1): the game's two items, "Start game" and "Option", resting on
-  `WINGS64_TITLE_MENU_BOTTOM` (18 px up from the screen's bottom, the game's own bottom overscan margin) with
+  `WINGS64_TITLE_MENU_BOTTOM` (40 px up from the screen's bottom: where it would sit above the copyright line, which leaves room below it) with
   the game's margins around the text (`xbox/src/game/settings_menu.c` `wings64_title_menu_y`,
   `wings64_title_box_top`). BACK on the title still opens the port settings panel (patches/034).
 - With `WINGS64_TITLE_COPYRIGHT` 0 (default): the copyright line is not drawn (its dark band, 30..285 x

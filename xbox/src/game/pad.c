@@ -76,11 +76,24 @@ static void combos(int port, const xhw_pad* p) {
     }
 }
 
+/* Before the XBE is left: the controllers are taken for good, so the VI
+ * thread's watch can never poll the USB stack while xhw_pad_shutdown tears
+ * it down (the dashboard combo hung the console, power button included,
+ * console runs 2 and 3: the watch fires once the game has not read the
+ * controllers for half a second, which leaving takes). */
+static volatile int s_leaving;
+
+void wx_pad_quiesce(void) {
+    s_leaving = 1;
+    while (!__sync_bool_compare_and_swap(&s_busy, 0, 1)) xhw_yield();
+}
+
 static void act(void) {
     static volatile long s_acting;
     long c = s_combo;
     if (!c || !__sync_bool_compare_and_swap(&s_acting, 0, 1)) return;
     xhw_sleep_ms(200);
+    wx_pad_quiesce();
     if (c == 1) xhw_quit_to_dashboard();
     xhw_reboot_self();
 }
@@ -88,7 +101,7 @@ static void act(void) {
 /* VI thread, every retrace (os_shim.c) */
 void wx_pad_retrace(void) {
     uint32_t r = ++s_retraces;
-    if (WX_PAD_COMBO_WATCH && s_started && r - s_read_at >= COMBO_WATCH && (r & 7) == 0 &&
+    if (WX_PAD_COMBO_WATCH && s_started && !s_leaving && r - s_read_at >= COMBO_WATCH && (r & 7) == 0 &&
         __sync_bool_compare_and_swap(&s_busy, 0, 1)) {
         int i;
         if (s_retraces - s_read_at >= COMBO_WATCH) {   /* the game did not read meanwhile */

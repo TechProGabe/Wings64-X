@@ -3,6 +3,51 @@
 Newest first. Each milestone entry says what was verified and how; "xemu"
 results are emulator-only (no timing, audio or memory claims from them).
 
+## M7 (part) — 16:9 hor+, Widescreen row, confirm-or-revert, 1080i (2026-10-15)
+
+Worktree branch off `port` (367d94b); nothing pushed. All results are xemu-only (slot 3, its EEPROM given
+every video flag with `tools/xbox/eeprom_video.py`, xemu's HDTV pack; autopad scenarios kept outside the repo).
+
+- **Hor+** (PLAN.md 3.2; docs/decisions.md "Video"): Birdman64's approach. `f3d_interp.c` maps the 320x240
+  space onto a centred, undistorted 4:3 box (960x720, 1440x1080, 480x480 of an anamorphic 640x480) and, with
+  Widescreen on, opens the scissor of a world view's perspective draws to the full width; untextured fills
+  spanning the view (clears, fades, letterbox bars) stretch across it; the rest of the 2D stays in the box.
+  The x trivial reject scales with the drawn width. patches/050 widens the game's culling for world views
+  (on top of 030's 1.25) and tags their draws with `G_NOOP`s; 051 drops the side bars; 052 anchors the
+  flight HUD's gauges to the 16:9 edges (Birdman64's hud.c/font.c, horizontal anchors only). The title stays
+  in its fitted 4:3 box. Game side: `xbox/src/game/widescreen.c`, `xbox/include/game/wings64_widescreen.h`.
+- **Widescreen row** (Port settings > Video, second; merged into the sub-menu panel): Off / On / Auto ("Auto, 16:9" / "Auto, 4:3": 16:9 at
+  720p/1080i, the dashboard's flag at 480), applied at once (`wx_settings_apply_widescreen`, `[VIDEO]
+  widescreen ...` logged). Off at 720p/1080i = 4:3 box with black bars; On at 480 = anamorphic. (The flat
+  panel's 10-row legend placement went with the merge into the sub-menus.) Test builds: `env MX_WIDESCREEN=off|on|auto`.
+- **Confirm-or-revert** (PLAN.md 3.3 net 3, `xhw_video.c`): a 720p/1080i mode that `video_confirmed` does not
+  name writes `video_pending.txt` before `XVideoSetMode`; the present draws "New video mode 720p. Press A to
+  keep it." / "Back to 480i in N s." (CPU text, new `xhw_overlay.c`, Melee-X's; notices are drawn by it too
+  now). A (game read, or the VI thread while the game reads no controller) confirms, saves `video_confirmed`
+  and is not passed to the game. No A in 15 s: restart; a boot that finds the pending file runs 480i and saves
+  480i (also covers a reset in front of a black TV). Restart instead of a live pbkit re-init, and 480p not on
+  probation: docs/decisions.md. Test builds: a mode forced by `env MX_VIDEO=` is on probation only with
+  `env MX_VIDEO_PROBATION=1`; `env MX_VIDEO_CONFIRM_SECS=` (a 720p FBDUMP takes ~8 s of the 15).
+- **1080i**: nxdk's table has 1920x1080i (NTSC-M/J, HDTV pack); no patch needed. xemu: pbkit up at 1920x1080
+  16-bit, 13.7 MB free after the renderer, title/menus/flight drawn. The 6 MB texture pool ran down to
+  ~450 KB free in flight (0 failed allocations): watch it on the console.
+- `tools/xbox/eeprom_video.py`: Melee-X's, plus 1080i and a flag list (`none` for a 480i 4:3 dashboard).
+- Kill switches: `-DXGFX_HORPLUS=0` (16:9 as a plain stretch; no tags, no wider culling), `-DXGFX_HUD_ANCHOR=0`
+  (HUD in the box), `-DXHW_VIDEO_CONFIRM=0`, `-DXHW_VIDEO_1080I=0` (existing).
+- Verified (xemu, shots by eye): 720p Auto: title in the box, vehicle select / class summary / test overview /
+  flight / results hor+, flight HUD at the edges, more castle and village at the sides; 720p Off: 4:3 box with
+  bars, HUD in the box; 1080i: class summary and flight hor+; 480p On: anamorphic flight and menus; (2x
+  supersampling was checked here too, before its removal in 41f7062); panel: Auto -> Off at once (panel
+  backdrop went from pillarboxed to full), saved, next flight 4:3; Off -> On the same. Probation: prompt shot
+  at 720p; A confirmed (`[VIDEO] 720p confirmed (A)`, settings saved) and the intro was not skipped by it; no
+  A: `720p not confirmed in time: restarting in 480i`, the next boot `720p was not confirmed ...: 480i,
+  saved`, 640x480 interlaced. Release, test and kill-switch builds clean; `rom_leak_check.py` clean.
+- Not verified: the console (TV aspect, overscan of the anchored HUD, interlace flicker at 1080i, 1080i
+  fill rate, the restart from the VI thread on hardware); edge pop-in over a long flight (spot checks only);
+  the cannonball and camera-shutter anchors (no scenario reaches them); widescreen in the photo album.
+- Seen, not from this work: a 1-px white column at the right edge of the title's box (Off and On, 480 and
+  720p); a faint rectangle around the radar; the FPS counter overlaps "TIME" (now at the left edge at 16:9).
+
 ## Port settings in sub-menus (2026-10-15)
 
 Worktree branch off `port` (d9daf76); nothing pushed. The panel is now "Port settings" > Video >, Controls >,

@@ -21,6 +21,7 @@
 #include <string.h>
 
 #include "wings64_settings.h"
+#include "wings64_widescreen.h"
 #include "wx_game.h"
 #include "xgfx.h"
 #include "xhw.h"
@@ -163,10 +164,41 @@ void wx_settings_load(void) {
         g_wx_settings.widescreen = 0;
         write = 1;
     }
+#if defined(XHW_AUTOPAD) && XHW_AUTOPAD
+    {   /* test builds: "env MX_WIDESCREEN=off|on|auto" from the autopad script, for this boot */
+        const char* e = getenv("MX_WIDESCREEN");
+        if (e) {
+            g_wx_settings.widescreen = pick(e, k_ws, 3, 2);
+            xhw_logf("[SETTINGS] MX_WIDESCREEN=%s", e);
+        }
+    }
+#endif
     xhw_logf("[SETTINGS] output %s, progressive %d, widescreen %s, fps %d, screenshots %d, stick dead zone %d%%",
              k_out[g_wx_settings.output], g_wx_settings.progressive, k_ws[g_wx_settings.widescreen], g_wx_settings.fps,
              g_wx_settings.screenshots, g_wx_settings.stick_deadzone);
     if (write) wx_settings_save();
+}
+
+/* Widescreen (PLAN.md 3.2; wings64_widescreen.h): On, Off, or Auto (16:9 at
+ * 720p/1080i; the dashboard's 16:9 flag at 480). Applied at once: the video
+ * mode does not change, only the interpreter's content rect, hor+ and the
+ * game's culling and borders, read per frame. */
+int wx_settings_widescreen_on(void) {
+    const xhw_video_mode* m = xhw_video();
+    if (g_wx_settings.widescreen != 2) return g_wx_settings.widescreen == 1;
+    return m->height >= 720 || xhw_video_widescreen_set();
+}
+
+void wx_settings_apply_widescreen(void) {
+    const xhw_video_mode* m = xhw_video();
+    int on = wx_settings_widescreen_on();
+    wings64_widescreen_aspect = on && XGFX_HORPLUS ? 16.0f / 9.0f : 0.0f;
+    f3d_set_widescreen(on);
+    if (g_wx_settings.widescreen == 2)
+        xhw_logf("[VIDEO] widescreen %s (auto: %s)", on ? "on" : "off",
+                 m->height >= 720 ? "16:9 at 720p/1080i" : xhw_video_widescreen_set() ? "dashboard 16:9" : "dashboard 4:3");
+    else
+        xhw_logf("[VIDEO] widescreen %s", on ? "on" : "off");
 }
 
 void wx_settings_apply_fps(void) {

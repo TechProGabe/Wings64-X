@@ -150,6 +150,19 @@ void xhw_video_set_pref(int output, int progressive);
 /* Sets the mode once, before pbkit starts. Ends the splash. */
 void xhw_video_boot(void);
 void xhw_video_fallback_480(void);
+/* The confirm-or-revert net (PLAN.md 3.3, xhw_video.c). Before
+ * xhw_video_boot: settings.ini's video_confirmed. After it: the mode's name
+ * ("480i", "480p", "720p", "1080i"); 1 when this boot is 480i because the
+ * last one never confirmed its mode (the caller saves 480i); 1 while the
+ * prompt waits for A; xhw_video_confirm ends it (the caller saves
+ * video_confirmed); 1 once it has waited its 15 s (the caller restarts the
+ * XBE, and the next boot runs 480i). */
+void xhw_video_set_confirmed(const char* mode);
+const char* xhw_video_mode_name(void);
+int xhw_video_reverted(void);
+int xhw_video_probation(void);
+void xhw_video_confirm(void);
+int xhw_video_probation_expired(void);
 /* Retrace: waits for the next vblank and counts it (xhw_frame_count). */
 void xhw_wait_vblank(void);
 unsigned xhw_frame_count(void);

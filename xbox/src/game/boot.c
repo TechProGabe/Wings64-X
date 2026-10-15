@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include "app/game.h"
+#include <wings64_widescreen.h>
 #include "wx_game.h"
 #include "xgfx.h"
 #include "xhw.h"
@@ -51,10 +52,17 @@ void wx_boot(const uint8_t* rom, uint32_t size) {
 #endif
     wx_settings_load();
     xhw_video_set_pref(g_wx_settings.output, g_wx_settings.progressive);
+    xhw_video_set_confirmed(g_wx_settings.video_confirmed);
     xhw_video_boot();
+    if (xhw_video_reverted()) {   /* PLAN.md 3.3: the last boot's mode was never confirmed */
+        g_wx_settings.output = XHW_OUT_480I;
+        g_wx_settings.progressive = 0;
+        wx_settings_save();
+    }
     xgfx_init();
     xgfx_set_tex_filter(g_wx_settings.tex_filter ? 2 : 0);
     wx_settings_apply_fps();
+    wx_settings_apply_widescreen();   /* after xgfx_init: a fallback to 480 changes what Auto means */
     xhw_pad_set_shots(g_wx_settings.screenshots);
     wings64_rdram_init();
     xhw_log("[BOOT] starting the game (bootproc)");

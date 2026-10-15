@@ -27,11 +27,11 @@
  *    title comes back without the intro (game.c's GAME_STATE_OPTIONS path).
  *
  * Pages (k_pages): "Port settings" is Video >, Controls >, System > and Return;
- * Video: Resolution (restart: `*`), Anti-aliasing (`*`), Texture filter, FPS
- * counter; Controls: Stick dead zone with the raw stick's tilt next to it,
- * Rumble; System: Screenshots (test builds), Save and restart. Each sub-menu
- * ends in Return (B does the same), which goes back up one level. Widescreen and Buttons
- * come with their features (M7 widescreen, remapping). settings.ini is
+ * Video: Resolution (restart: `*`), Widescreen (Off / On / Auto, at once),
+ * Texture filter, FPS counter, Apply and restart; Controls: Stick dead zone
+ * with the raw stick's tilt next to it, Rumble; System: Screenshots. Each
+ * sub-menu ends in Return (B does the same), which goes back up one level.
+ * Buttons come with remapping. settings.ini is
  * written on leaving when something changed (settings.c).
  *
  * Kill switches: WINGS64_SETTINGS_MENU=0 (wings64_settings.h) compiles this
@@ -51,6 +51,7 @@
 #include "app/snd.h"
 #include "app/text_data.h"
 #include <wings64_settings.h>
+#include <wings64_widescreen.h>
 
 #include "wx_game.h"
 #include "xgfx.h"
@@ -250,7 +251,7 @@ static void out_text(char* buf, int out) {
 
 /* ------------------------------------------------------------------ the panel */
 
-enum { ROW_VIDEO, ROW_FPS, ROW_SHOTS, ROW_DEADZONE, ROW_RESTART, ROW_RETURN, ROW_FILTER, ROW_RUMBLE,
+enum { ROW_VIDEO, ROW_FPS, ROW_SHOTS, ROW_DEADZONE, ROW_RESTART, ROW_RETURN, ROW_FILTER, ROW_RUMBLE, ROW_WIDE,
        ROW_PAGE_VIDEO, ROW_PAGE_CONTROLS, ROW_PAGE_SYSTEM };
 
 /* The panel is a top level ("Port settings") and three sub-menus. A page is
@@ -263,7 +264,7 @@ enum { PAGE_TOP, PAGE_VIDEO, PAGE_CONTROLS, PAGE_SYSTEM, PAGE_COUNT };
 static const s32 k_page_top[]      = { ROW_PAGE_VIDEO, ROW_PAGE_CONTROLS, ROW_PAGE_SYSTEM, ROW_RETURN };
 /* "Apply and restart" sits under the rows it applies (the `*` ones);
    System holds Screenshots (every build: maintainer, console run 8) */
-static const s32 k_page_video[]    = { ROW_VIDEO, ROW_FILTER, ROW_FPS, ROW_RESTART, ROW_RETURN };
+static const s32 k_page_video[]    = { ROW_VIDEO, ROW_WIDE, ROW_FILTER, ROW_FPS, ROW_RESTART, ROW_RETURN };
 static const s32 k_page_controls[] = { ROW_DEADZONE, ROW_RUMBLE, ROW_RETURN };
 static const s32 k_page_system[]   = { ROW_SHOTS, ROW_RETURN };
 
@@ -314,6 +315,8 @@ static const char* row_label(s32 kind) {
         return "System >";
     case ROW_VIDEO:
         return "Resolution *";
+    case ROW_WIDE:
+        return "Widescreen";
     case ROW_FILTER:
         return "Texture filter";
     case ROW_RUMBLE:
@@ -344,6 +347,10 @@ static void panel_set_row(s32 idx) {
     switch (kind) {
     case ROW_VIDEO:
         out_text(v, g_wx_settings.output);
+        break;
+    case ROW_WIDE:   /* "Auto, 16:9" / "Auto, 4:3" for this boot's mode (PLAN.md 3.4) */
+        if (g_wx_settings.widescreen == 2) snprintf(v, sizeof v, "Auto, %s", wx_settings_widescreen_on() ? "16:9" : "4:3");
+        else snprintf(v, sizeof v, "%s", g_wx_settings.widescreen ? "On" : "Off");
         break;
     case ROW_FILTER:
         snprintf(v, sizeof v, "%s", k_filter_names[g_wx_settings.tex_filter ? 1 : 0]);
@@ -391,8 +398,12 @@ static void panel_open_page(s32 page, s32 cursor) {
     }
     sReturnText = textGetDataByIdx(TEXT_QUIT);
 
-    /* optionsInitMain centres 3 rows at y 100; one row is 17 px */
+    /* optionsInitMain centres 3 rows at y 100; one row is 17 px. From 10
+     * rows (test builds) the legend goes on the Return row and the rows move
+     * down a row and a half, clear of the top edge (TV overscan) */
     sPanelY = 100 + (3 - sPanelCount) * 9;
+    uvFontSet(MENU_FONT);
+    uvFontScale(1.0f, 1.0f);
     menuUtilCreate(PANEL_X, sPanelY, MENU_FONT, 1.0f, 1.0f, NULL, sPanelCount);
     gFcnDrawMenuItem = panel_draw_item;
     sPanelTextX = PANEL_X + uvFontWidth("A") / 2 + 3;   /* where menuUtilRender starts item text */
@@ -432,6 +443,7 @@ static void panel_init(void) {
     glyphs(sHint[ROW_PAGE_CONTROLS], 0, ROW_CAP, MENU_FONT, "Stick and rumble");
     glyphs(sHint[ROW_PAGE_SYSTEM], 0, ROW_CAP, MENU_FONT, "Screenshots");
     glyphs(sHint[ROW_VIDEO], 0, ROW_CAP, MENU_FONT, "HD needs an HD cable");
+    glyphs(sHint[ROW_WIDE], 0, ROW_CAP, MENU_FONT, "Auto: 16:9 at 720p and 1080i");
     glyphs(sHint[ROW_FPS], 0, ROW_CAP, MENU_FONT, "Frame rate, top left");
     glyphs(sHint[ROW_RESTART], 0, ROW_CAP, MENU_FONT, "Restarts to apply *");
     glyphs(sHint[ROW_DEADZONE], 0, ROW_CAP, MENU_FONT, "Ignores small stick drift");
@@ -448,6 +460,10 @@ static void panel_change(s32 idx, s32 dir) {
     case ROW_VIDEO:
         g_wx_settings.output = (g_wx_settings.output + dir + 5) % 5;
         g_wx_settings.progressive = g_wx_settings.output != XHW_OUT_480I;   /* 480i is the one interlaced pick */
+        break;
+    case ROW_WIDE:   /* Off, On, Auto; at once (the panel's own backdrop shows it) */
+        g_wx_settings.widescreen = (g_wx_settings.widescreen + dir + 3) % 3;
+        wx_settings_apply_widescreen();
         break;
     case ROW_FILTER:
         g_wx_settings.tex_filter = !g_wx_settings.tex_filter;
@@ -494,9 +510,9 @@ static void panel_dpad_move(s32 cur) {
 
 static void panel_save(void) {
     if (!sDirty) return;
-    xhw_logf("[SETTINGS] output %s, texture filter %s, rumble %d, fps %d, screenshots %d, "
+    xhw_logf("[SETTINGS] output %s, widescreen %d, texture filter %s, rumble %d, fps %d, screenshots %d, "
              "stick dead zone %d%%",
-             k_out_names[g_wx_settings.output], k_filter_names[g_wx_settings.tex_filter ? 1 : 0],
+             k_out_names[g_wx_settings.output], g_wx_settings.widescreen, k_filter_names[g_wx_settings.tex_filter ? 1 : 0],
              g_wx_settings.rumble, g_wx_settings.fps, g_wx_settings.screenshots, g_wx_settings.stick_deadzone);
     wx_settings_save();
     sDirty = 0;

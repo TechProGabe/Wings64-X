@@ -823,6 +823,16 @@ void xgfx_present(void) {
     xgfx_frame_begin();
     pb_budget();
     if (s_fps_on) fps_overlay();
+    {   /* the video-mode prompt and notices: CPU text once the GPU is done (xhw_overlay.c) */
+        char lines[2][96];
+        uint32_t rgb;
+        int top, n = xhw_video_overlay(lines, &rgb, &top);
+        if (n) {
+            wait_idle();
+            xhw_overlay_lines(fb_cpu(pb_back_buffer()), s_fbw, s_fbh, s_bpp, (int)pb_back_buffer_pitch(), lines, n, rgb,
+                              top);
+        }
+    }
     shot = xhw_shot_take();
     s_last_fb = pb_back_buffer();
     if (!XGFX_OVERLAP || shot || (XHW_FBDUMP_EVERY && (s_frame + 1) % XHW_FBDUMP_EVERY == 0)) wait_idle();

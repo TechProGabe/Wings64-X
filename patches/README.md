@@ -67,6 +67,9 @@ bit-field ones hold because the game triple uses GCC's layout
 | 035 | title menu: the game's two items at the bottom, no copyright line (`DIVERGES`, `WINGS64_SETTINGS_IN_OPTIONS`, `WINGS64_TITLE_COPYRIGHT`) | Wings64-X own |
 | 036 | Option menu: "Port settings" and "Exit to dashboard" (`DIVERGES`, `WINGS64_SETTINGS_IN_OPTIONS`) | Wings64-X own |
 | 037 | rumble on a crash (the crash jingle starts; `DIVERGES`, `WX_RUMBLE`, the Rumble row) | Wings64-X own |
+| 050 | 16:9 hor+: a world view's culling as wide as shown, its draws tagged for the interpreter (`DIVERGES`, `XGFX_HORPLUS`) | from Birdman64 (MIT) |
+| 051 | 16:9 hor+: no side bars around world views (`DIVERGES`, `XGFX_HORPLUS`) | from Birdman64 (MIT) |
+| 052 | 16:9 hor+: the flight HUD's gauges anchored to the 16:9 edges (`DIVERGES`, `XGFX_HUD_ANCHOR`) | from Birdman64 (MIT) |
 
 The port-side functions these call: `xbox/src/game/rom/` (`pw64_swap`, the
 loaders, the arena, `N64_K0`'s base), `xbox/src/game/ultra/fatal.c`

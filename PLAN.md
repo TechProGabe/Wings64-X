@@ -398,6 +398,7 @@ Pilotwings' use of the buttons):
 | D-pad | D-pad |
 | BACK (title screen) | opens the port Settings panel, same as choosing "Settings" |
 | L + R + BACK + BLACK | quit to the dashboard (Melee-X) |
+| L + R + BACK + WHITE | restart: relaunch this XBE (`xhw_reboot_self`; the console's "reset" without a power cycle). Maintainer request 2026-10-15. Both combos work on any port and in every game state, and are logged (`[PAD] ... restart`) and written to `lastexit.txt` |
 
 ### D9. ROM handling (§3.1 has the full procedure)
 
@@ -605,7 +606,11 @@ logged:
 
 ### 3.4 In-game settings menu (the game's look; Melee-X's semantics)
 
-As wings64-dc's patch 021 and `settings.c`, re-targeted: a third title item
+As wings64-dc's patch 021 and `settings.c`, re-targeted, plus a fourth title item
+**"Exit to dashboard"** (maintainer request 2026-10-15): drawn and chosen like the
+others (same glyph builder, chime and confirm sound), it writes `lastexit.txt`
+("exit to the dashboard from the title menu") and calls `xhw_quit_to_dashboard`;
+kill switch `WINGS64_TITLE_EXIT=0`. A third title item
 "Settings" below "Start game" and "Option" (the title's dark box grows a row,
 `menuCreateItems` with 3 items, `menuSetItem` for the glyph string built from
 font 6's bold set), `gameUpdateStateOptions` runs the port panel instead of
@@ -967,6 +972,7 @@ tools/xbox/ setup.sh docker/ msys/ compile_game.py fetch_decomp.sh xemu_run.sh f
 | 16:9 HUD | **anchored to the 16:9 edges** with Birdman64's HUD patches, after the centred box works | §3.2, M7 |
 | Licence | **MIT** for the port's own code; Melee-X-derived files relicensed by their author | M10 |
 | Melee-X optimisations | **all that apply are adopted**, each with a kill switch (D13; added 2026-10-15) | D13, M3-M9 |
+| Leaving the game | **"Exit to dashboard"** as a title-menu item and **L+R+BACK+WHITE** to restart, next to L+R+BACK+BLACK to the dashboard (added 2026-10-15) | D8, 3.4, M3 (combo), M7 (menu item) |
 | LTO | **ThinLTO required**: on by default (`XBOX_LTO=1`), releases refuse a non-LTO build, `XBOX_LTO=0` only as the diagnosis kill switch (added 2026-10-15) | D3, M3, M5, M9, M10 |
 
 ### Defaults applied unless the maintainer objects

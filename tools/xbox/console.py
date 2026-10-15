@@ -17,6 +17,12 @@ TitleMeta.xbx in /E/UDATA/57580001/ (UnleashX's icon cache). Logs
 /E/UDATA/57580001/. The ROM is the user's own and only ever goes to the
 console: never into the tree. Keep each deployed build's map: sym.py and prof_report.py
 need the map of the build that wrote the log.
+
+FTP quirk the code is written around: the console's server ignores the path
+argument to LIST/NLST and lists the current directory, and a STOR/RETR with
+an absolute path is not trusted to land where it reads back from. So every
+file operation CWDs into its folder and uses the bare file name, and every
+upload is verified by listing that folder after the CWD.
 """
 import ftplib
 import io
@@ -53,10 +59,23 @@ def connect():
     return f
 
 
+def listing(f):
+    """Bare names in the current directory (NLST after CWD: the server ignores path args)."""
+    try:
+        return [p.rsplit("/", 1)[-1] for p in f.nlst()]
+    except ftplib.error_perm as e:
+        if str(e).startswith("550"):   # some servers answer an empty directory with 550
+            return []
+        raise
+
+
+def cd(f, path):
+    f.cwd(path)
+
+
 def logs(f):
-    # the console's FTP server lists the current directory whatever path NLST is given
-    f.cwd(UDATA)
-    return sorted(n for n in (p.rsplit("/", 1)[-1] for p in f.nlst()) if LOGS.match(n))
+    cd(f, UDATA)
+    return sorted(n for n in listing(f) if LOGS.match(n))
 
 
 def stage(v):
@@ -79,6 +98,31 @@ def mkdirs(f, path):
             pass   # already there (or a drive root)
 
 
+def upload_dir(f, folder, items):
+    """Store items ({bare name: bytes}) into folder, then verify them there.
+
+    Verification is by bare name after CWD: RETR must return the same bytes,
+    and the folder's own listing must show every name. Any miss is fatal.
+    """
+    mkdirs(f, folder)
+    cd(f, folder)
+    for name, data in items.items():
+        f.storbinary(f"STOR {name}", io.BytesIO(data))
+    for name, data in items.items():
+        back = io.BytesIO()
+        f.retrbinary(f"RETR {name}", back.write)
+        if back.getvalue() != data:
+            sys.exit(f"{folder}/{name} MISMATCH after upload")
+    there = set(listing(f))
+    missing = [n for n in items if n not in there]
+    if missing:
+        sys.exit(f"{folder}: not in the folder listing after upload: {', '.join(missing)} "
+                 f"(listing: {sorted(there) or 'empty'})")
+    for name, data in items.items():
+        print(f"{name} ok ({len(data)} bytes) in {folder}")
+    cd(f, "/")
+
+
 def deploy(v):
     src = HW / f"stage-{ver(v)}"
     f = connect()
@@ -86,30 +130,34 @@ def deploy(v):
     mkdirs(f, UDATA)
     old = logs(f)
     for n in old:
-        f.delete(f"{UDATA}/{n}")
+        f.delete(n)
+    cd(f, "/")
     print(f"deleted {len(old)} old logs/shots (pull them first if you need them)")
-    for name, d in FILES.items():
-        data = (src / name).read_bytes()
-        f.storbinary(f"STOR {d}/{name}", io.BytesIO(data))
-        back = io.BytesIO()
-        f.retrbinary(f"RETR {d}/{name}", back.write)
-        if back.getvalue() != data:
-            sys.exit(f"{name} MISMATCH after upload")
-        print(f"{name} ok ({len(data)} bytes)")
+    groups = {}
+    for name, folder in FILES.items():
+        groups.setdefault(folder, {})[name] = (src / name).read_bytes()
+    for folder, items in groups.items():
+        upload_dir(f, folder, items)
     rom = os.environ.get("MX_ROM")
     if rom:
         rom = Path(rom)
         name = rom.name
+        size = rom.stat().st_size
+        cd(f, APP)
         try:
-            have = f.size(f"{APP}/{name}")
+            have = f.size(name)
         except ftplib.error_perm:
             have = None
-        if have == rom.stat().st_size:
+        if have == size:
             print(f"{name} already on the console")
         else:
             with open(rom, "rb") as fh:
-                f.storbinary(f"STOR {APP}/{name}", fh)
-            print(f"{name} uploaded ({rom.stat().st_size} bytes; the XBE checks its SHA-1 at boot)")
+                f.storbinary(f"STOR {name}", fh)
+            cd(f, APP)
+            if f.size(name) != size or name not in listing(f):
+                sys.exit(f"{APP}/{name} not in place after upload (size or listing wrong)")
+            print(f"{name} uploaded ({size} bytes; the XBE checks its SHA-1 at boot)")
+        cd(f, "/")
     f.quit()
 
 
@@ -120,7 +168,7 @@ def pull(v):
     names = logs(f)
     for n in names:
         with open(out / n, "wb") as fh:
-            f.retrbinary(f"RETR {UDATA}/{n}", fh.write)
+            f.retrbinary(f"RETR {n}", fh.write)
         print(f"got {n} ({(out / n).stat().st_size} bytes)")
     f.quit()
     print(f"{len(names)} files in {out}")

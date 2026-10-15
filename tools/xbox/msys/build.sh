@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build default.xbe natively on Windows with MSYS2 (no Docker, no WSL;
-# Melee-X's script without the disc_lower step).
+# the same layout as tools/xbox/docker/build.sh).
 # Run from Git Bash or an MSYS2 shell:
 #   tools/xbox/msys/build.sh                       # -> build-xbox/xbe/default.xbe
 #   XBOX_CFLAGS=-DXHW_AUTOPAD=1 tools/xbox/msys/build.sh

@@ -211,7 +211,7 @@ Branch: a worktree branch off `port` (M0); nothing pushed.
   "Memory map"); `hooks.c` stubs: Settings (M7, `-DWINGS64_SETTINGS_MENU=0`
   until then or the title stops at a TODO card), frame persistence (renderer),
   audio task (M6); ThinLTO as the default once the game runs both ways; the
-  Docker files still name Melee-X's image and `disc_lower` (M0 copy).
+  Docker files now name `wings64-x:sdk` (the Melee-X image and `disc_lower` step are gone).
 
 ## M1 — ROM validation (2026-10-15)
 

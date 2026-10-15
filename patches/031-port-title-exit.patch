@@ -1,0 +1,62 @@
+--- a/src/app/title_screen.c
++++ b/src/app/title_screen.c
+@@ -59,9 +59,15 @@
+ u8 D_80350690 = 1;
+ s32 D_80350694 = 1;
+ #if defined(WINGS64_XBOX) && WINGS64_SETTINGS_MENU
++#if WINGS64_TITLE_EXIT
++// DIVERGES: title "Exit to dashboard" item (a fourth item below "Settings"; its text is set with menuSetItem)
++STATIC_DATA s32 sMainMenuItems[] = { TEXT_GAMESTART, TEXT_OPTION, TEXT_OPTION, TEXT_OPTION };
++STATIC_DATA s32 sTitleMenuRow; // the port's extra rows (font height + 1 each): the menu and its box grow down by it
++#else
+ // DIVERGES: port settings menu (third title item "Settings"; its text is set with menuSetItem)
+ STATIC_DATA s32 sMainMenuItems[] = { TEXT_GAMESTART, TEXT_OPTION, TEXT_OPTION };
+ STATIC_DATA s32 sTitleMenuRow; // one menu row (font height + 1): the menu and its box grow down by it
++#endif
+ #else
+ STATIC_DATA s32 sMainMenuItems[] = { TEXT_GAMESTART, TEXT_OPTION };
+ #endif
+@@ -206,9 +212,17 @@
+ #if defined(VERSION_JP)
+     menuCreateItems(94, 60, 6, 1.0f, 1.0f, sMainMenuItems, 2);
+ #elif defined(WINGS64_XBOX) && WINGS64_SETTINGS_MENU
++#if WINGS64_TITLE_EXIT
++    // DIVERGES: title "Exit to dashboard" item (two rows added below "Option": "Settings", "Exit to dashboard")
++    sTitleMenuRow = 2 * wings64_settings_title_init();
++    menuCreateItems(102, 60 - sTitleMenuRow, 6, 1.0f, 1.0f, sMainMenuItems, 4);
++    menuSetItem(2, wings64_settings_title_label());
++    menuSetItem(3, wings64_title_exit_label());
++#else
+     sTitleMenuRow = wings64_settings_title_init();
+     menuCreateItems(102, 60 - sTitleMenuRow, 6, 1.0f, 1.0f, sMainMenuItems, 3);
+     menuSetItem(2, wings64_settings_title_label());
++#endif
+ #else // VERSION_US
+     menuCreateItems(102, 60, 6, 1.0f, 1.0f, sMainMenuItems, 2);
+ #endif
+@@ -465,6 +479,12 @@
+         case 2:
+             gameState = wings64_settings_open();
+             break;
++#if WINGS64_TITLE_EXIT
++        // DIVERGES: title "Exit to dashboard" item (does not return: lastexit.txt, then the dashboard)
++        case 3:
++            wings64_title_exit();
++            break;
++#endif
+ #endif
+         case -1:
+             break;
+@@ -505,7 +525,12 @@
+ #if defined(VERSION_JP)
+     screenDrawBox(89, 74, 222, 120, 0, 0, 0, sp30);
+ #elif defined(WINGS64_XBOX) && WINGS64_SETTINGS_MENU
++#if WINGS64_TITLE_EXIT
++    // DIVERGES: title "Exit to dashboard" item (the box grows right to hold its text)
++    screenDrawBox(97, 76 - sTitleMenuRow, wings64_title_box_right(202), 118, 0, 0, 0, sp30);
++#else
+     screenDrawBox(97, 76 - sTitleMenuRow, 202, 118, 0, 0, 0, sp30);
++#endif
+ #else // VERSION_US
+     screenDrawBox(97, 76, 202, 118, 0, 0, 0, sp30);
+ #endif

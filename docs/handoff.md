@@ -3,6 +3,63 @@
 Newest first. Each milestone entry says what was verified and how; "xemu"
 results are emulator-only (no timing, audio or memory claims from them).
 
+## M7 (part) — Settings menu, "Exit to dashboard", BACK on the title, combos in every state (2026-10-15)
+
+Worktree branch off `port` (5888cf6); nothing pushed. All picture and
+behaviour results below are xemu-only (no console yet).
+
+- **Settings panel** (`xbox/src/game/settings_menu.c`, wings64-dc's
+  `settings.c` re-targeted; `ultra/hooks.c` stubs removed;
+  `WINGS64_SETTINGS_MENU` now defaults to 1). The Option screen's level,
+  backdrop, cursor, chime and sounds; rows through `menuUtil*` with our own
+  item callback (menu.c's wrapper holds 5 items, the panel has 6 in test
+  builds). Rows: Video output `*` (Auto/480i/480p/720p/1080i, shown "Auto,
+  720p" / "480p > 480i" from the dashboard's allowance; font 6 draws `>` as
+  a double chevron), FPS counter, Screenshots (test builds), Stick dead zone
+  (0-60 by 5, D-pad repeat by retrace count, live "Stick N" readout; font 6
+  has no `%`), Save and restart (relaunches when a `*` row differs from the
+  boot value, otherwise as Return), Return (and B): `settings.ini` saved
+  when something changed. Legend "* After a restart" (yellow while a
+  restart is pending). Widescreen and Buttons rows omitted until their
+  features exist.
+- **FPS counter** (maintainer via the lead): the row switches the renderer's
+  counter (`nv2a.c` `fps_overlay`, identical to Melee-X's: presented frames
+  over 0.5 s of the ACPI clock, 5x7 yellow at 2x on black, top-left at 1/16
+  of the framebuffer); key `[video] fps` (Melee-X's name), default on in
+  test builds only; applied after `xgfx_init` and at once on a toggle
+  (`wx_settings_apply_fps`). wings64-dc's game-font counter stays behind
+  `-DWX_FPS_GAME_FONT=1`.
+- **"Exit to dashboard"** (`patches/031`, `WINGS64_TITLE_EXIT`, default 1):
+  fourth title item, the box grows down two rows and right to fit; writes
+  lastexit.txt and quits. No confirm prompt (PLAN.md asks for none).
+- **BACK on the title** opens the panel (`patches/032`; ignored while a
+  trigger is held, so the combos don't open it).
+- **Combos (D8)** were right (any port, both triggers > 200 as Melee-X,
+  fire at once, logged, lastexit.txt) but only checked when the game read
+  the controllers. Now also from the VI thread when the game has not read
+  for 30 retraces (a try-acquire flag keeps the threads out of SDL together;
+  the VI thread never waits). `-DWX_PAD_COMBO_WATCH=0` turns that off;
+  `-DWX_PAD_COMBO_VI_ONLY=1` is a test switch that leaves only the VI path.
+- `settings.c`: the "; end of settings" check ran after `parse()` had cut
+  the text up, so `settings.ini` was rewritten on every boot; fixed.
+- Verified (xemu, slot 2, autopad scenarios kept outside the repo): title
+  with four items in the box; Settings and BACK open the panel; FPS
+  counter toggles off/on and the counter appears/disappears; dead zone
+  25/30 and the readout (Stick 100 with the stick held); video Auto -> 480i
+  -> 480p shows "480p > 480i", Save and restart relaunched and the next boot
+  read output 480p and logged "previous exit: restart from the settings
+  menu"; Exit item: `[TITLE] Exit to dashboard`, the next boot logged
+  "previous exit: exit to the dashboard from the title menu"; L+R+BACK+WHITE
+  on the title restarted (normal build) and, with `WX_PAD_COMBO_VI_ONLY=1`,
+  WHITE restarted and BLACK quit from the panel via the VI thread;
+  `WINGS64_TITLE_EXIT=0` shows three items, `WINGS64_SETTINGS_MENU=0` the
+  game's two; release and test builds clean; `rom_leak_check.py` clean.
+- Not verified: the console (pad feel, dead-zone repeat rate, 720p/1080i
+  rows on an HDTV pack, the dashboard after Exit); the release build's panel
+  (no autopad); a real level load with the VI combo path (exercised through
+  the test switch instead). Open: picking 1080i/720p in the panel has no
+  confirm-or-revert yet (PLAN.md 3.3 net 3); BACK at boot is the way back.
+
 ## M3 (in progress) — in-game picture fixes from the first watched sessions (2026-10-15)
 
 Branch `port`; nothing pushed. The game boots to the title, the menus and

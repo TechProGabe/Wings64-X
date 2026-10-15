@@ -1,0 +1,275 @@
+--- a/src/app/hud.c
++++ b/src/app/hud.c
+@@ -19,6 +19,9 @@
+ #include "task.h"
+ #include "text_data.h"
+ #include "thermals.h"
++#ifdef WINGS64_XBOX
++#include <wings64_widescreen.h> // PORT: the flight HUD at the 16:9 edges (patches/052)
++#endif
+ 
+ // number of frames to render for camera shutter animation
+ #define CAMERA_SHUTTER_FRAMES 3
+@@ -308,6 +311,9 @@
+             } else if (sHudState.renderFlags & HUD_RENDER_BIRDMAN) {
+                 hudDrawBirdman(&sHudState);
+             }
++#ifdef WINGS64_XBOX
++            wings64_hud_set_anchor('C'); // DIVERGES: hor+ HUD: centred messages
++#endif
+             hudDrawLowFuel(&sHudState);
+             hudDrawStartText(&sHudState);
+             if (sHudState.showController != 0) {
+@@ -317,6 +323,9 @@
+         sHudState.unkC++;
+         sHudState.unk14 += D_8034F854;
+         uvFontGenDlist();
++#ifdef WINGS64_XBOX
++        wings64_hud_set_anchor('C'); // DIVERGES: hor+ HUD: end of the anchored HUD
++#endif
+         uvGfxMtxViewPop();
+     }
+ }
+@@ -375,6 +384,9 @@
+     s32 pad3;
+ 
+     if (arg0->speed == 0.0f) {
++#ifdef WINGS64_XBOX
++        wings64_hud_set_anchor('L'); // DIVERGES: hor+ HUD: power gauge and shots
++#endif
+         uvGfxStatePush();
+         uvGfxSetFlags(GFX_STATE_XLU);
+         uvGfxClearFlags(GFX_STATE_AA | GFX_STATE_ZBUFFER);
+@@ -436,6 +448,9 @@
+             uvVtxEndPoly();
+             uvGfxStatePop();
+         }
++#ifdef WINGS64_XBOX
++        wings64_hud_set_anchor('C'); // DIVERGES: hor+ HUD: heading bar
++#endif
+         uvGfxStatePush();
+         uvGfxSetFlags(GFX_STATE_XLU);
+         uvGfxClearFlags(GFX_STATE_AA | GFX_STATE_ZBUFFER);
+@@ -572,6 +587,9 @@
+         uvVtx(156, 29, 0, 0, 0, 255, 0, 0, 255);
+         uvVtxEndPoly();
+         uvGfxStatePop();
++#ifdef WINGS64_XBOX
++        wings64_hud_set_anchor('R'); // DIVERGES: hor+ HUD: elevation gauge
++#endif
+         uvGfxStatePush();
+         uvGfxSetFlags(GFX_STATE_XLU);
+         uvGfxClearFlags(GFX_STATE_AA | GFX_STATE_ZBUFFER);
+@@ -688,6 +706,9 @@
+ void hudDrawCamera(HUDState* hud) {
+     s32 x;
+ 
++#ifdef WINGS64_XBOX
++    wings64_hud_set_anchor('C'); // DIVERGES: hor+ HUD: the reticle stays centred
++#endif
+     if (hud->cameraState & HUD_CAM_RENDER_RETICLE) {
+         // clang-format off
+         uvSprtProps(9,
+@@ -711,8 +732,21 @@
+             x = hud->cameraState * (240 / CAMERA_SHUTTER_FRAMES);
+         }
+         uvGfxBindTexture(GFX_STATE_TEXTURE_NONE);
++#ifdef WINGS64_XBOX
++        // DIVERGES: hor+ HUD: each bar is anchored to its 16:9 edge and grows to
++        // half the shown width (240 * aspect N64 px), so the two still meet
++        if (XGFX_HUD_ANCHOR && wings64_widescreen_aspect > 4.0f / 3.0f) {
++            x = (s32)(x * wings64_widescreen_aspect * 0.75f);
++        }
++        wings64_hud_set_anchor('L');
+         uvVtxRect(0, SCREEN_HEIGHT - 1, x, 0);
++        wings64_hud_set_anchor('R');
+         uvVtxRect(SCREEN_WIDTH - 1 - x, SCREEN_HEIGHT - 1, SCREEN_WIDTH - 1, 0);
++        wings64_hud_set_anchor('C');
++#else
++        uvVtxRect(0, SCREEN_HEIGHT - 1, x, 0);
++        uvVtxRect(SCREEN_WIDTH - 1 - x, SCREEN_HEIGHT - 1, SCREEN_WIDTH - 1, 0);
++#endif
+         hud->cameraState--;
+         D_8034F914 = 0;
+     }
+@@ -918,6 +952,9 @@
+ }
+ 
+ void hudDrawThrottle(s32 x, s32 y, f32 power) {
++#ifdef WINGS64_XBOX
++    wings64_hud_anchor_xy(x, y); // DIVERGES: hor+ HUD: gauge column to its 16:9 edge
++#endif
+     Mtx4F rot;
+     UNUSED s16* fakePtr;
+     s16 y1;
+@@ -979,6 +1016,9 @@
+ }
+ 
+ void hudDrawRadar(s32 x, s32 y, f32 xOff, f32 yOff, f32 heading, f32 pitch, HUDRadar* radar) {
++#ifdef WINGS64_XBOX
++    wings64_hud_anchor_xy(x, y); // DIVERGES: hor+ HUD: gauge column to its 16:9 edge
++#endif
+     Mtx4F sp108;
+     Mtx4F spC8;
+     f32 temp_fa0;
+@@ -1243,6 +1283,9 @@
+ }
+ 
+ void hudDemoController(void) {
++#ifdef WINGS64_XBOX
++    wings64_hud_set_anchor('L'); // DIVERGES: hor+ HUD: the demo's controller picture
++#endif
+     s32 screenX;
+     s32 screenY;
+     f32 stickX;
+@@ -1299,6 +1342,9 @@
+ }
+ 
+ void hudDrawSpeed(s32 x, s32 y, s32 speed, s32 highlightLowSpeed) {
++#ifdef WINGS64_XBOX
++    wings64_hud_anchor_xy(x, y); // DIVERGES: hor+ HUD: gauge column to its 16:9 edge
++#endif
+     char str[12];
+     s32 numX;
+ 
+@@ -1327,6 +1373,9 @@
+ }
+ 
+ void hudDrawFuel(s32 x, s32 y, f32 fuel) {
++#ifdef WINGS64_XBOX
++    wings64_hud_anchor_xy(x, y); // DIVERGES: hor+ HUD: gauge column to its 16:9 edge
++#endif
+     s16 curX1;
+     s16 curX2;
+     s16 curY1;
+@@ -1415,6 +1464,9 @@
+ }
+ 
+ void hudDrawAltimeter(s32 x, s32 y, s32 altitude) {
++#ifdef WINGS64_XBOX
++    wings64_hud_anchor_xy(x, y); // DIVERGES: hor+ HUD: gauge column to its 16:9 edge
++#endif
+     s32 pad32;
+     s16 sp72;
+     s16 pad16;
+@@ -1534,6 +1586,9 @@
+ }
+ 
+ void hudSeaLevel(s32 x, s32 y, s32 alt) {
++#ifdef WINGS64_XBOX
++    wings64_hud_anchor_xy(x, y); // DIVERGES: hor+ HUD: gauge column to its 16:9 edge
++#endif
+     char str[12];
+ 
+     y += 8;
+@@ -1561,6 +1616,9 @@
+ }
+ 
+ void hudDrawTimer(s32 x, s32 y, f32 timeSecF) {
++#ifdef WINGS64_XBOX
++    wings64_hud_anchor_xy(x, y); // DIVERGES: hor+ HUD: gauge column to its 16:9 edge
++#endif
+     static s32 D_8034F938 = 0;
+     s32 timeMs;
+     s32 timeSec;
+@@ -1613,6 +1671,9 @@
+ }
+ 
+ void hudDrawAimReticle(s32 x, s32 y, s32 flag) {
++#ifdef WINGS64_XBOX
++    wings64_hud_set_anchor('C'); // DIVERGES: hor+ HUD: stays centred
++#endif
+     s16 centerX;
+     s16 centerY;
+ 
+@@ -2055,6 +2116,9 @@
+ }
+ 
+ void hudDrawPhotoCount(void) {
++#ifdef WINGS64_XBOX
++    wings64_hud_set_anchor('C'); // DIVERGES: hor+ HUD: stays centred
++#endif
+     char str[12];
+     (void)snapGetPhotoCount();
+     uvFontSet(8);
+--- a/src/kernel/font.c
++++ b/src/kernel/font.c
+@@ -6,6 +6,7 @@
+ #include <uv_string.h>
+ #ifdef WINGS64_XBOX
+ #include <pw64_endian.h> // PW64: native ROM-layout loaders
++#include <wings64_widescreen.h> // PORT: hor+ HUD anchors (patches/052)
+ #endif
+ 
+ #if defined(VERSION_JP)
+@@ -35,6 +36,11 @@
+ STATIC_DATA Bitmap sFontBitmaps[FONT_MAX_MSG_LEN];
+ STATIC_DATA Gfx sFontDList[FONT_DL_COUNT * 2];
+ STATIC_DATA FontMessage sFontMessages[FONT_MSG_COUNT];
++#ifdef WINGS64_XBOX
++// DIVERGES: the hor+ HUD anchor of each queued message (text is drawn at
++// uvFontGenDlist, after the HUD has moved on to other anchors)
++static u8 sWx64MsgAnchor[FONT_MSG_COUNT];
++#endif
+ 
+ STATIC_DATA Sprite sFontSprite = {
+     0,                     // x
+@@ -291,6 +297,9 @@
+ 
+     sFontMessages[sFontMsgCount].font = gGfxUnkPtrs->fonts[sFontCurId];
+ 
++#ifdef WINGS64_XBOX
++    sWx64MsgAnchor[sFontMsgCount] = (u8)wings64_hud_anchor; // PORT: hor+ HUD (patches/052)
++#endif
+     sFontMsgCount++;
+     if (sp24 != 0) {
+         ret = -1;
+@@ -319,6 +328,9 @@
+ 
+         if (str16[i16] == 0xFD) {
+             sFontMessages[sFontMsgCount].str16[i] = -1;
++#ifdef WINGS64_XBOX
++            sWx64MsgAnchor[sFontMsgCount] = (u8)wings64_hud_anchor; // PORT: hor+ HUD (patches/052)
++#endif
+             sFontMsgCount++;
+             sFontMessages[sFontMsgCount].r = sFontColorR;
+             sFontMessages[sFontMsgCount].g = sFontColorG;
+@@ -346,6 +358,9 @@
+         sFontMessages[sFontMsgCount].str16[i] = -1;
+     }
+ 
++#ifdef WINGS64_XBOX
++    sWx64MsgAnchor[sFontMsgCount] = (u8)wings64_hud_anchor; // PORT: hor+ HUD (patches/052)
++#endif
+     sFontMsgCount++;
+     if (sp24 != 0) {
+         ret = -1;
+@@ -391,6 +406,9 @@
+ 
+     sFontMessages[sFontMsgCount].str16[strLen] = -1;
+     sFontMessages[sFontMsgCount].font = gGfxUnkPtrs->fonts[sFontCurId];
++#ifdef WINGS64_XBOX
++    sWx64MsgAnchor[sFontMsgCount] = (u8)wings64_hud_anchor; // PORT: hor+ HUD (patches/052)
++#endif
+     sFontMsgCount++;
+ }
+ 
+@@ -451,8 +469,18 @@
+     sFontSprite.rsp_dl_next = &sFontSprite.rsp_dl[(gGfxFbIndex * FONT_DL_COUNT) + D_80248E90];
+ 
+     for (i = 0; i < sFontMsgCount; i++) {
++#ifdef WINGS64_XBOX
++        if (i == 0 || sWx64MsgAnchor[i] != sWx64MsgAnchor[i - 1]) {
++            wings64_hud_emit_anchor(sWx64MsgAnchor[i]); // DIVERGES: hor+ HUD: the message's anchor
++        }
++#endif
+         uvFontMsgGenDlist(&sFontMessages[i]);
+     }
++#ifdef WINGS64_XBOX
++    if (sWx64MsgAnchor[sFontMsgCount - 1] != (u8)wings64_hud_anchor) {
++        wings64_hud_emit_anchor(wings64_hud_anchor); // back to the current one
++    }
++#endif
+     spFinish(&gGfxDisplayListHead);
+     gGfxDisplayListHead--;
+     D_80248E90 += sFontMsgCount;

@@ -32,6 +32,7 @@
  * which then looks every 8 retraces (checks that path in xemu). */
 #include <ultra64.h>
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "wx_game.h"
@@ -109,17 +110,48 @@ static void act(void) {
     xhw_reboot_self();
 }
 
+/* The video-mode prompt (PLAN.md 3.3, xhw_video.c): A on any port keeps the
+ * mode (video_confirmed saved); that press, and A until it is let go, does
+ * not reach the game. No press in 15 s: the XBE restarts and the next boot
+ * runs 480i (checked here on the VI thread, so a stalled game thread can't
+ * keep a mode nobody can see). */
+static int s_confirm_hold;
+
+static void video_confirm(void) {
+    xhw_video_confirm();
+    snprintf(g_wx_settings.video_confirmed, sizeof g_wx_settings.video_confirmed, "%s", xhw_video_mode_name());
+    wx_settings_save();
+}
+
+static void video_timeout(void) {
+    static volatile long s_reverting;
+    if (!xhw_video_probation_expired() || !__sync_bool_compare_and_swap(&s_reverting, 0, 1)) return;
+    xhw_logf("[VIDEO] %s not confirmed in time: restarting in 480i", xhw_video_mode_name());
+    xhw_exit_reason("video mode not confirmed: restarted in 480i");
+    wx_pad_quiesce();
+    xhw_reboot_self();
+}
+
 /* VI thread, every retrace (os_shim.c) */
 void wx_pad_retrace(void) {
     uint32_t r = ++s_retraces;
-    if (WX_PAD_COMBO_WATCH && s_started && !s_leaving && r - s_read_at >= COMBO_WATCH && (r & 7) == 0 &&
-        __sync_bool_compare_and_swap(&s_busy, 0, 1)) {
+    video_timeout();
+    /* the video-mode prompt is answered here too while the game reads no
+     * controller (the intro, a level load); the controllers are up since
+     * settings.c's BACK check at boot */
+    if (((WX_PAD_COMBO_WATCH && s_started) || xhw_video_probation()) && !s_leaving && r - s_read_at >= COMBO_WATCH &&
+        (r & 7) == 0 && __sync_bool_compare_and_swap(&s_busy, 0, 1)) {
         int i;
         if (s_retraces - s_read_at >= COMBO_WATCH) {   /* the game did not read meanwhile */
             xhw_pad_poll();
             for (i = 0; i < MAXCONTROLLERS; i++) {
                 xhw_pad p;
-                if (xhw_pad_get(i, &p)) combos(i, &p);
+                if (!xhw_pad_get(i, &p)) continue;
+                if (WX_PAD_COMBO_WATCH && s_started) combos(i, &p);
+                if ((p.buttons & XHW_BTN_A) && xhw_video_probation()) {
+                    video_confirm();
+                    s_confirm_hold |= 1 << i;
+                }
             }
         }
         __sync_lock_release(&s_busy);
@@ -180,7 +212,12 @@ void wx_pad_read(void* out) {
         }
         if (!WX_PAD_COMBO_VI_ONLY) combos(i, &p);
         if (i == 0 && (p.buttons & XHW_BTN_BACK) && p.lt < TRIG_ON && p.rt < TRIG_ON) back = 1;
-        if (p.buttons & XHW_BTN_A) b |= A_BUTTON;
+        if ((p.buttons & XHW_BTN_A) && xhw_video_probation()) {   /* the video-mode prompt */
+            video_confirm();
+            s_confirm_hold |= 1 << i;
+        }
+        if (!(p.buttons & XHW_BTN_A)) s_confirm_hold &= ~(1 << i);
+        if ((p.buttons & XHW_BTN_A) && !(s_confirm_hold & (1 << i))) b |= A_BUTTON;
         if (p.buttons & XHW_BTN_X) b |= B_BUTTON;
         if (p.buttons & XHW_BTN_START) b |= START_BUTTON;
         if (p.buttons & XHW_BTN_UP) b |= U_JPAD;

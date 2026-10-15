@@ -27,9 +27,10 @@
  *    title comes back without the intro (game.c's GAME_STATE_OPTIONS path).
  *
  * Rows (PLAN.md 3.4, what the port has today): Resolution, the video output (restart: `*`),
+ * Widescreen (Off / On / Auto, at once),
  * FPS counter, Screenshots (test builds), Stick dead zone with the raw
- * stick's tilt next to it, Save and restart, Return. Widescreen and Buttons
- * come with their features (M7 widescreen, remapping). settings.ini is
+ * stick's tilt next to it, Save and restart, Return. Buttons
+ * come with remapping. settings.ini is
  * written on leaving when something changed (settings.c).
  *
  * Kill switches: WINGS64_SETTINGS_MENU=0 (wings64_settings.h) compiles this
@@ -49,6 +50,7 @@
 #include "app/snd.h"
 #include "app/text_data.h"
 #include <wings64_settings.h>
+#include <wings64_widescreen.h>
 
 #include "wx_game.h"
 #include "xgfx.h"
@@ -250,7 +252,7 @@ static void out_text(char* buf, int out) {
 
 /* ------------------------------------------------------------------ the panel */
 
-enum { ROW_VIDEO, ROW_FPS, ROW_SHOTS, ROW_DEADZONE, ROW_RESTART, ROW_RETURN, ROW_FILTER, ROW_AA, ROW_RUMBLE };
+enum { ROW_VIDEO, ROW_FPS, ROW_SHOTS, ROW_DEADZONE, ROW_RESTART, ROW_RETURN, ROW_FILTER, ROW_AA, ROW_RUMBLE, ROW_WIDE };
 
 static const char* const k_filter_names[] = { "N64", "Smooth", "Sharp" };
 static const char* const k_aa_names[] = { "Off", "2x", "4x" };
@@ -271,6 +273,7 @@ static s16* sReturnText;
 static s32 sStickHeld;
 static u8 sDirty;
 static s32 sPanelY;
+static s32 sLegendOnReturn;   /* 10 rows: the legend on the Return row (panel_init) */
 static s32 sPanelTextX;
 static s32 sValueX;
 static s32 sReadoutX;
@@ -281,6 +284,8 @@ static const char* row_label(s32 kind) {
     switch (kind) {
     case ROW_VIDEO:
         return "Resolution *";
+    case ROW_WIDE:
+        return "Widescreen";
     case ROW_FILTER:
         return "Texture filter";
     case ROW_AA:
@@ -313,6 +318,10 @@ static void panel_set_row(s32 idx) {
     switch (kind) {
     case ROW_VIDEO:
         out_text(v, g_wx_settings.output);
+        break;
+    case ROW_WIDE:   /* "Auto, 16:9" / "Auto, 4:3" for this boot's mode (PLAN.md 3.4) */
+        if (g_wx_settings.widescreen == 2) snprintf(v, sizeof v, "Auto, %s", wx_settings_widescreen_on() ? "16:9" : "4:3");
+        else snprintf(v, sizeof v, "%s", g_wx_settings.widescreen ? "On" : "Off");
         break;
     case ROW_FILTER:
         snprintf(v, sizeof v, "%s", k_filter_names[g_wx_settings.tex_filter]);
@@ -362,6 +371,7 @@ static void panel_init(void) {
     settings_boot_values();
     sPanelCount = 0;
     sPanelRowKind[sPanelCount++] = ROW_VIDEO;
+    sPanelRowKind[sPanelCount++] = ROW_WIDE;
     sPanelRowKind[sPanelCount++] = ROW_AA;
     sPanelRowKind[sPanelCount++] = ROW_FILTER;
     sPanelRowKind[sPanelCount++] = ROW_RUMBLE;
@@ -372,8 +382,14 @@ static void panel_init(void) {
     sPanelRowKind[sPanelCount++] = ROW_RETURN;
     sReturnText = textGetDataByIdx(TEXT_QUIT);
 
-    /* optionsInitMain centres 3 rows at y 100; one row is 17 px */
+    /* optionsInitMain centres 3 rows at y 100; one row is 17 px. From 10
+     * rows (test builds) the legend goes on the Return row and the rows move
+     * down a row and a half, clear of the top edge (TV overscan) */
     sPanelY = 100 + (3 - sPanelCount) * 9;
+    uvFontSet(MENU_FONT);
+    uvFontScale(1.0f, 1.0f);
+    sLegendOnReturn = sPanelCount >= 10;
+    if (sLegendOnReturn) sPanelY -= 3 * (uvFontHeight() + 1) / 2;
     menuUtilCreate(PANEL_X, sPanelY, MENU_FONT, 1.0f, 1.0f, NULL, sPanelCount);
     gFcnDrawMenuItem = panel_draw_item;
     sPanelTextX = PANEL_X + uvFontWidth("A") / 2 + 3;   /* where menuUtilRender starts item text */
@@ -407,6 +423,10 @@ static void panel_change(s32 idx, s32 dir) {
     case ROW_VIDEO:
         g_wx_settings.output = (g_wx_settings.output + dir + 5) % 5;
         g_wx_settings.progressive = g_wx_settings.output != XHW_OUT_480I;   /* 480i is the one interlaced pick */
+        break;
+    case ROW_WIDE:   /* Off, On, Auto; at once (the panel's own backdrop shows it) */
+        g_wx_settings.widescreen = (g_wx_settings.widescreen + dir + 3) % 3;
+        wx_settings_apply_widescreen();
         break;
     case ROW_FILTER:
         g_wx_settings.tex_filter = (g_wx_settings.tex_filter + dir + 3) % 3;
@@ -456,9 +476,9 @@ static void panel_dpad_move(s32 cur) {
 
 static void panel_save(void) {
     if (!sDirty) return;
-    xhw_logf("[SETTINGS] output %s, anti-aliasing %s, texture filter %s, rumble %d, fps %d, screenshots %d, "
+    xhw_logf("[SETTINGS] output %s, widescreen %d, anti-aliasing %s, texture filter %s, rumble %d, fps %d, screenshots %d, "
              "stick dead zone %d%%",
-             k_out_names[g_wx_settings.output], k_aa_names[g_wx_settings.aa], k_filter_names[g_wx_settings.tex_filter],
+             k_out_names[g_wx_settings.output], g_wx_settings.widescreen, k_aa_names[g_wx_settings.aa], k_filter_names[g_wx_settings.tex_filter],
              g_wx_settings.rumble, g_wx_settings.fps, g_wx_settings.screenshots, g_wx_settings.stick_deadzone);
     wx_settings_save();
     sDirty = 0;
@@ -542,7 +562,10 @@ static void panel_draw_legend(void) {
     uvFontScale(1.0f, 1.0f);
     if (restart_pending()) uvFontColor(0xFF, 0xFF, 0x00, 0xFF);
     else uvFontColor(0xFF, 0xFF, 0xFF, 0xFF);
-    uvFontPrintStr16(sPanelTextX, sPanelY - 2 * (uvFontHeight() + 1), sLegend, 100, 0xFFE);
+    if (sLegendOnReturn)
+        uvFontPrintStr16(sPanelTextX + uvFontStr16Width(sReturnText) + 24, sPanelY + uvFontHeight() + 1, sLegend, 100,
+                         0xFFE);
+    else uvFontPrintStr16(sPanelTextX, sPanelY - 2 * (uvFontHeight() + 1), sLegend, 100, 0xFFE);
 }
 
 int wings64_settings_screen(void) {

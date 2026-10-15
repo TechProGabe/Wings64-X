@@ -46,6 +46,9 @@ changed on import.
 | 029 | `include/libultra/PR/os_convert.h`, `include/libultra/PR/R4300.h`, `kernel/geometry.c` | **Wings64-X's own**: KSEG0/physical conversions are the identity, `geometry.c:347`'s `+ 0x80000000` dropped (host pointers stay host pointers; "Memory map" below) | `WINGS64_XBOX` |
 | 031 | `app/title_screen.c` | **Wings64-X's own**: fourth title item "Exit to dashboard" (`DIVERGES`; PLAN.md 3.4) | `WINGS64_XBOX && WINGS64_SETTINGS_MENU && WINGS64_TITLE_EXIT` (both default 1) |
 | 034 | `app/title_screen.c` | **Wings64-X's own**: BACK on the title opens the Settings panel (`DIVERGES`; PLAN.md D8) | `WINGS64_XBOX && WINGS64_SETTINGS_MENU` |
+| 050 | `kernel/code_7150.c`, `kernel/chan.c` | 16:9 hor+: a world view's culling frustum as wide as shown, its draws tagged for the interpreter (`DIVERGES`; from Birdman64, MIT) | `WINGS64_XBOX`; run time: Widescreen setting; `-DXGFX_HORPLUS=0` |
+| 051 | `app/code_D2B10.c`, `app/level_select.c` | 16:9 hor+: the side bars around world views not drawn (`DIVERGES`; from Birdman64) | as 050 |
+| 052 | `app/hud.c`, `kernel/font.c` | 16:9 hor+: flight HUD anchored to the 16:9 edges (`DIVERGES`; from Birdman64) | as 050; `-DXGFX_HUD_ANCHOR=0` |
 
 Changes made on import, beyond the guard: 022 runs the command list (the
 Dreamcast's AICA played the voices, so its list was a placeholder; the Xbox
@@ -174,3 +177,36 @@ and `src/rsp` are not built (wings64-dc's list): the port supplies that
 layer. `src/libultra/audio` is built whole (unlike wings64-dc, which drops
 the synthesizer for its AICA voices): the Xbox runs libultra's synthesizer
 (PLAN.md D6).
+
+## Video: 16:9 hor+ and the confirm-or-revert net (M7)
+
+- **Hor+ by un-cropping, not by a wider projection.** PLAN.md 3.2 describes
+  hor+ as the projection's x column widened by 3/4. The interpreter gets the
+  same picture by keeping the game's projection and 4:3 mapping and opening
+  the world view's scissor to the 16:9 width (Birdman64's approach): the
+  vertical field of view, the HUD's size and every matrix the game also uses
+  for itself (photo scoring, the gyro reticle) stay the N64's. Only the
+  game's CPU culling has to follow (patches/050); the trivial reject in the
+  interpreter scales with the drawn width (`s_rej_kx`, 1.2 x 4/3 at 16:9).
+- **What extends.** Perspective draws inside a world view's tags; untextured
+  no-Z fills spanning the view's width (clears, fades, the letterbox's top
+  and bottom bars) are stretched across the 16:9 width; everything else is
+  2D in the centred 4:3 box, undistorted (menus, text, pillarboxed 2D art,
+  pilot select's glider). The title stays in its fitted 4:3 box. The flight
+  HUD's gauges move to the edges by anchor tags (patches/052).
+- **Widescreen Off at 720p/1080i** is the centred 4:3 box with black bars
+  (maintainer requirement); **On at 480** is anamorphic 16:9 (the box is 3/4
+  of the frame wide; a 16:9 TV set to full undoes the squeeze). Applied per
+  frame: the panel's row takes effect at once.
+- **Unconfirmed modes restart in 480i** (PLAN.md 3.3 net 3) instead of
+  re-initialising pbkit live: M7 names the restart as the fallback if a second
+  `pb_init` is unreliable, and it is taken from the start because a second
+  `pb_init` has never run on hardware here. The restart path is the same as a
+  console reset with the pending file present, so there is one revert path.
+- **480p is not put on probation**, only 720p and 1080i: the dashboard itself
+  runs at 480p when its 480p flag is set, so a TV that shows the dashboard
+  shows 480p.
+- **1080i is in nxdk's table** (`lib/hal/video.c`: 1920x1080 interlaced,
+  mode 0x880E0C03, NTSC-M and NTSC-J, HDTV pack), so `XVideoSetMode(1920,
+  1080, 16)` works without a patch; xemu runs it (pbkit up, 6 MB texture
+  pool, 13.7 MB free after the renderer). Not on a console yet.

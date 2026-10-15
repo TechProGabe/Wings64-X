@@ -48,6 +48,9 @@ int wx_settings_save(void);
  * -DWX_FPS_GAME_FONT=1 wings64-dc's game-font one (settings_menu.c). Called
  * at boot after xgfx_init and after a change of g_wx_settings.fps. */
 void wx_settings_apply_fps(void);
+/* Widescreen (wings64_widescreen.h has wx_settings_apply_widescreen): 1 when
+ * the setting (Auto resolved for this video mode) is 16:9 */
+int wx_settings_widescreen_on(void);
 int wx_settings_fps_game_font(void);   /* 1: settings_menu.c draws the counter */
 
 #endif

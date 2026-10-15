@@ -29,6 +29,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <wings64_widescreen.h>
+
 #include "f3d_gbi.h"
 #include "f3d_interp.h"
 #include "texconv.h"
@@ -78,6 +80,11 @@
 #ifndef XGFX_REJECT_RATIO
 #define XGFX_REJECT_RATIO 1.2f
 #endif
+/* x reject scale: 1, or with hor+ the drawn width over the 4:3 box's (4/3
+ * at 16:9), so the reject follows the aspect (map_setup) */
+static float s_rej_kx = 1.0f;
+static uint32_t s_epoch = 1;   /* draw state epoch: DIRTY() makes the next draw rebuild its state */
+#define DIRTY() (s_epoch++)
 
 /* ------------------------------------------------------------------ state */
 
@@ -173,8 +180,10 @@ static void do_mtx(uint32_t w0, uint32_t w1) {
     uint8_t p = (w0 >> 16) & 0xFF;
     mtx_from_n64(m, ram(w1));
     if (p & F3D_G_MTX_PROJECTION) {
+        int persp = R.proj[2][3] != 0.0f;
         if (p & F3D_G_MTX_LOAD) memcpy(R.proj, m, sizeof m);
         else mtx_mul(R.proj, m, R.proj);
+        if ((R.proj[2][3] != 0.0f) != persp) DIRTY();   /* hor+ extends perspective draws only (pixel_state) */
     } else {
         if ((p & F3D_G_MTX_PUSH) && R.mv_top < MTX_DEPTH - 1) {
             memcpy(R.mv[R.mv_top + 1], R.mv[R.mv_top], sizeof m);
@@ -246,8 +255,8 @@ static void do_vtx(uint32_t w0, uint32_t w1) {
         v->w = x * m[0][3] + y * m[1][3] + z * m[2][3] + m[3][3];
         gw = GUARD * v->w;
         rw = XGFX_REJECT_RATIO * v->w;
-        if (v->x > rw) o |= 1;
-        if (v->x < -rw) o |= 2;
+        if (v->x > rw * s_rej_kx) o |= 1;   /* hor+: the drawn extent is wider (map_setup) */
+        if (v->x < -rw * s_rej_kx) o |= 2;
         if (v->y > rw) o |= 4;
         if (v->y < -rw) o |= 8;
         if (v->z < -v->w) o |= 16;
@@ -278,27 +287,55 @@ static void do_vtx(uint32_t w0, uint32_t w1) {
 /* ------------------------------------------------------------- output map */
 
 /* N64 viewport pixels -> framebuffer pixels: x * s_sx + s_ox. The content
- * rect is the whole framebuffer at 4:3, a centred 4:3 box in a 16:9 one
- * (PLAN.md 3.2; widescreen comes in M7). */
+ * rect is the 4:3 box the N64's 320x240 maps onto, undistorted: the whole
+ * framebuffer at 4:3, a centred box in a 16:9 picture (960x720 of 1280x720,
+ * 1440x1080 of 1920x1080, 480x480 of an anamorphic 640x480).
+ *
+ * Widescreen (PLAN.md 3.2, wings64_widescreen.h): with hor+ on, the world
+ * view's perspective draws keep this mapping and are scissored to the full
+ * width instead of the box (s_wx0..s_wx1), so the 3D shows more left and
+ * right at the same vertical field of view; untextured fills that span the
+ * view (clears, fades, the letterbox bars) are stretched across it; the
+ * rest of the 2D stays in the box, the flight HUD's gauges moved to the
+ * edges by anchor tags. Off at 720p/1080i: the box with black bars. */
 static float s_sx = 2.0f, s_sy = 2.0f, s_ox, s_oy;
 static XgfxOutput s_out;
 static float s_cx, s_cy, s_cw = 640.0f, s_ch = 480.0f;   /* content rect */
+static float s_wx0, s_wx1 = 640.0f;   /* the drawn width: the box, or with hor+ the framebuffer */
 static int s_title;   /* the title screen this frame (title fit) */
+static volatile int s_ws_req;   /* f3d_set_widescreen */
+static int s_hp;                /* hor+ this frame */
+static int s_world;             /* inside a world view's tags (patches/050) */
+static int s_anchor = 'C';      /* the HUD anchor of the 2D draws that follow (patches/052) */
+static int s_extend;            /* this draw state: a world view's perspective draw, scissored to s_wx0..s_wx1 */
+static float s_xoff;            /* this draw state: the anchor's shift in framebuffer pixels */
 #define TITLE_MARGIN 12.0f   /* output pixels at 480; scaled with the content rect */
 
+void f3d_set_widescreen(int on) { s_ws_req = on; }
+
 static void map_setup(void) {
-    float aspect;
+    float aspect, shown;
+    int wide = s_ws_req;
     xgfx_output(&s_out);
     if (s_out.xscale < 1) s_out.xscale = 1;
-    aspect = (float)s_out.fb_w / (float)s_out.xscale / (float)s_out.fb_h;   /* the screen's, not the pixels' */
+    aspect = (float)s_out.fb_w / (float)s_out.xscale / (float)s_out.fb_h;   /* the framebuffer's, not the pixels' */
+    /* the aspect the TV shows: 16:9 at 720p/1080i; at 480 16:9 with Widescreen
+     * on (anamorphic: a 16:9 TV set to "full" undoes the squeeze), else 4:3 */
+    shown = aspect > 1.4f ? aspect : wide ? 16.0f / 9.0f : 4.0f / 3.0f;
     s_ch = (float)s_out.fb_h;
-    s_cw = aspect > 1.4f ? s_ch * 4.0f / 3.0f * (float)s_out.xscale : (float)s_out.fb_w;   /* DIVERGES: none (4:3 box) until M7 */
+    s_cw = (float)s_out.fb_w * (4.0f / 3.0f) / shown;
+    if (wide && !XGFX_HORPLUS) s_cw = (float)s_out.fb_w;   /* kill switch: 16:9 as a plain stretch */
     s_cx = ((float)s_out.fb_w - s_cw) * 0.5f;
     s_cy = 0.0f;
+    /* DIVERGES: hor+ (the title stays in its fitted box) */
+    s_hp = wide && XGFX_HORPLUS && !s_title && s_cw < (float)s_out.fb_w - 1.0f;
+    s_wx0 = s_hp ? 0.0f : s_cx;
+    s_wx1 = s_hp ? (float)s_out.fb_w : s_cx + s_cw;
+    s_rej_kx = s_hp ? (s_wx1 - s_wx0) / s_cw : 1.0f;
     if (XGFX_TITLE_FIT && s_title) {
         /* the title composes its picture inside SUBSCREEN (10..310 x 8..222);
          * DIVERGES: fitted to the content rect with a black margin, as the DC port */
-        float m = TITLE_MARGIN * s_ch / 480.0f, mx = m * (float)s_out.xscale;
+        float m = TITLE_MARGIN * s_ch / 480.0f, mx = m * s_cw / (s_ch * 4.0f / 3.0f);   /* xscale, anamorphic 480 */
         s_sx = (s_cw - 2.0f * mx) / 300.0f;
         s_ox = s_cx + mx - 10.0f * s_sx;
         s_sy = (s_ch - 2.0f * m) / 214.0f;
@@ -322,8 +359,7 @@ static void map_setup(void) {
 
 static XgfxState s_st;           /* the state the batch below is drawn with */
 static float s_zrel;             /* XGFX_Z_REL: this state's depth bias, a fraction of the distance */
-static uint32_t s_epoch = 1, s_st_epoch;
-#define DIRTY() (s_epoch++)
+static uint32_t s_st_epoch;
 static int s_textured, s_tex1, s_decal, s_overlay, s_shadow_pass2;
 static float s_u_scale[2], s_u_off[2], s_v_scale[2], s_v_off[2];
 static unsigned s_zorder;
@@ -610,21 +646,39 @@ static void pixel_state(int depth_override_always) {
     memcpy(s_st.env, R.env, 4);
     s_st.prim_lod_frac = R.prim_lod_frac;
     s_st.lod_frac = 0;   /* DIVERGES: one mip level is drawn (PLAN.md D4 phase A) */
+    /* hor+ (map_setup): a world view's perspective draw under the full-screen
+     * scissor is drawn across the whole width; other draws stay in the box,
+     * moved by the HUD anchor ('L' / 'R': the side margin) */
+    s_extend = s_hp && s_world && !s_sc_on && !depth_override_always /* a rectangle */ && R.proj[2][3] != 0.0f;
+    s_xoff = 0.0f;
+    if (s_hp && !s_extend && XGFX_HUD_ANCHOR) {
+        if (s_anchor == 'L') s_xoff = s_wx0 - s_cx;
+        else if (s_anchor == 'R') s_xoff = s_wx1 - (s_cx + s_cw);
+    }
     {   /* the clip rectangle: the content rect, or a small scissor/viewport */
         float x0 = s_sc_on ? s_sc[0] : 0.0f, y0 = s_sc_on ? s_sc[1] : 0.0f;
         float x1 = s_sc_on ? s_sc[2] : N64_W, y1 = s_sc_on ? s_sc[3] : N64_H;
         if (s_sc_on) {
-            s_st.scissor[0] = (int32_t)(x0 * s_sx + s_ox + 0.5f);
+            s_st.scissor[0] = (int32_t)(x0 * s_sx + s_ox + s_xoff + 0.5f);
             s_st.scissor[1] = (int32_t)(y0 * s_sy + s_oy + 0.5f);
-            s_st.scissor[2] = (int32_t)(x1 * s_sx + s_ox + 0.5f);
+            s_st.scissor[2] = (int32_t)(x1 * s_sx + s_ox + s_xoff + 0.5f);
             s_st.scissor[3] = (int32_t)(y1 * s_sy + s_oy + 0.5f);
-        } else {
-            s_st.scissor[0] = (int32_t)s_cx;
+        } else {   /* x: scissor_x, once s_overlay is known */
+            s_st.scissor[0] = (int32_t)(s_cx + s_xoff);
             s_st.scissor[1] = (int32_t)s_cy;
-            s_st.scissor[2] = (int32_t)(s_cx + s_cw);
+            s_st.scissor[2] = (int32_t)(s_cx + s_cw + s_xoff);
             s_st.scissor[3] = (int32_t)(s_cy + s_ch);
         }
     }
+}
+
+/* the full-screen clip's x: the drawn width for an extended world draw and
+ * for the fills overlay_full may stretch to the 16:9 edges; the box (moved
+ * by the anchor) for the rest, which the N64 cropped at its screen edge */
+static void scissor_x(void) {
+    if (s_sc_on || !(s_extend || (s_overlay && s_hp))) return;
+    s_st.scissor[0] = (int32_t)s_wx0;
+    s_st.scissor[2] = (int32_t)s_wx1;
 }
 
 /* the combiner reads no texel: a texture bound under a shade-only combiner (sky gradients) */
@@ -659,6 +713,7 @@ static void draw_state(void) {
         }
     }
     s_overlay = XGFX_OVERLAY_FULL && s_st.depth_func == XGFX_DEPTH_OFF && (!s_textured || !cc_reads_texel0());
+    scissor_x();
     if (R.cimg == R.zimg && R.cimg) {   /* shadow volume pass 1 (shadow volumes below) */
         s_st.stencil = XGFX_STENCIL_MARK;
         s_st.color_write = 0;
@@ -692,7 +747,7 @@ static void to_out(const Vtx* v, XgfxVtx* o, const Vtx* flat) {
         z01 -= (a - z01) * s_zrel;
     }
     const Vtx* c = flat ? flat : v;
-    o->x = (R.vp_tx + v->x * iw * R.vp_sx) * s_sx + s_ox;
+    o->x = (R.vp_tx + v->x * iw * R.vp_sx) * s_sx + s_ox + s_xoff;
     o->y = (R.vp_ty - v->y * iw * R.vp_sy) * s_sy + s_oy;
     o->z = (z01 < 0.0f ? 0.0f : z01 > 1.0f ? 1.0f : z01) * s_out.zmax;
 #ifdef XGFX_DEBUG_ZHALF
@@ -712,11 +767,15 @@ static void to_out(const Vtx* v, XgfxVtx* o, const Vtx* flat) {
 
 /* SUBSCREEN-sized overlay (fades, the HUD's fade box): stretched to the
  * content rect, since the port draws 3D views unscissored to the edges.
- * DIVERGES: as wings64-dc's overlay_full. */
+ * DIVERGES: as wings64-dc's overlay_full. With hor+ (map_setup), an
+ * untextured fill spanning the view's width (clears, fades, the letterbox's
+ * top and bottom bars) is stretched across the drawn width, rows as they
+ * are, as Birdman64's Stretch class; the anchor shift does not apply. */
 static void overlay_full(XgfxVtx* p, int n) {
     float x0 = p[0].x, x1 = p[0].x, y0 = p[0].y, y1 = p[0].y;
-    float sx0 = SUB_X0 * s_sx + s_ox, sx1 = SUB_X1 * s_sx + s_ox, sy0 = SUB_Y0 * s_sy + s_oy, sy1 = SUB_Y1 * s_sy + s_oy;
-    int i;
+    float sx0 = SUB_X0 * s_sx + s_ox + s_xoff, sx1 = SUB_X1 * s_sx + s_ox + s_xoff, sy0 = SUB_Y0 * s_sy + s_oy,
+          sy1 = SUB_Y1 * s_sy + s_oy;
+    int i, span_y;
     if (s_title) return;
     for (i = 1; i < n; i++) {
         if (p[i].x < x0) x0 = p[i].x;
@@ -724,10 +783,13 @@ static void overlay_full(XgfxVtx* p, int n) {
         if (p[i].y < y0) y0 = p[i].y;
         if (p[i].y > y1) y1 = p[i].y;
     }
-    if (x0 > sx0 || x1 < sx1 || y0 > sy0 || y1 < sy1) return;
+    if (x0 > sx0 || x1 < sx1) return;
+    span_y = y0 <= sy0 && y1 >= sy1;
+    if (!span_y && !s_hp) return;
     for (i = 0; i < n; i++) {
-        if (p[i].x <= sx0) p[i].x = s_cx;
-        else if (p[i].x >= sx1) p[i].x = s_cx + s_cw;
+        if (p[i].x <= sx0) p[i].x = s_hp ? s_wx0 : s_cx;
+        else if (p[i].x >= sx1) p[i].x = s_hp ? s_wx1 : s_cx + s_cw;
+        if (!span_y) continue;
         if (p[i].y <= sy0) p[i].y = s_cy;
         else if (p[i].y >= sy1) p[i].y = s_cy + s_ch;
     }
@@ -889,7 +951,7 @@ static void screen_quad(float x0, float y0, float x1, float y1, float s0, float 
     q[3].s = s1; q[3].t = t1;
     for (i = 0; i < 4; i++) {
         float x = (i & 1) ? x1 : x0, y = (i & 2) ? y1 : y0;
-        o[i].x = x * s_sx + s_ox;
+        o[i].x = x * s_sx + s_ox + s_xoff;
         o[i].y = y * s_sy + s_oy;
         o[i].z = 0.0f;
         o[i].w = 1.0f;
@@ -922,7 +984,7 @@ static void do_fillrect(uint32_t w0, uint32_t w1) {
         flush();
         if (s_trace) xhw_logf("[DRAW] z clear %d,%d-%d,%d fill %08x", ulx, uly, lrx, lry, (unsigned)R.fill);
         if (x0 <= SUB_X0 && x1 >= SUB_X1 && y0 <= SUB_Y0 && y1 >= SUB_Y1) {   /* SUBSCREEN-sized: the whole picture */
-            xgfx_clear((int32_t)s_cx, (int32_t)s_cy, (int32_t)(s_cx + s_cw), (int32_t)(s_cy + s_ch), 0, 0, 1, 1.0f);
+            xgfx_clear((int32_t)s_wx0, (int32_t)s_cy, (int32_t)s_wx1, (int32_t)(s_cy + s_ch), 0, 0, 1, 1.0f);
         } else {
             xgfx_clear((int32_t)(x0 * s_sx + s_ox), (int32_t)(y0 * s_sy + s_oy), (int32_t)(x1 * s_sx + s_ox),
                        (int32_t)(y1 * s_sy + s_oy), 0, 0, 1, 1.0f);
@@ -951,6 +1013,7 @@ static void do_fillrect(uint32_t w0, uint32_t w1) {
         s_st.two_cycle = cycle == 1;
     }
     s_overlay = XGFX_OVERLAY_FULL && !s_title;
+    scissor_x();
     if (s_overlay && ulx <= SUB_X0 && lrx >= SUB_X1 && uly <= SUB_Y0 && lry >= SUB_Y1) {
         ulx = uly = 0;
         lrx = 320;
@@ -1002,6 +1065,7 @@ static void do_texrect(uint32_t w0, uint32_t w1) {
     }
     if (s_textured && (cycle == 2 || (x1 - x0) * fdx < 64.0f)) s_st.filter[0] = 0;   /* 1:1 blits (gfx.md) */
     s_overlay = XGFX_OVERLAY_FULL && !s_textured;
+    scissor_x();
     screen_quad(x0, y0, x1, y1, fs, ft, fs + (x1 - x0) * fdx, ft + (y1 - y0) * fdy);
     flush();
     DIRTY();
@@ -1241,8 +1305,17 @@ static void run_dl(const uint32_t* pc) {
                 clip_rect_update();
                 break;
             }
+            case F3D_G_NOOP:   /* the port's widescreen tags (patches/050, 052; wings64_widescreen.h) */
+                if (w1 == WINGS64_TAG_WORLD_ON || w1 == WINGS64_TAG_WORLD_OFF) {
+                    s_world = w1 == WINGS64_TAG_WORLD_ON;
+                    DIRTY();
+                } else if ((w1 & 0xFFFFFF00u) == WINGS64_TAG_ANCHOR) {
+                    s_anchor = (int)(w1 & 0xFF);
+                    DIRTY();
+                }
+                break;
             case F3D_G_RDPLOADSYNC: case F3D_G_RDPPIPESYNC: case F3D_G_RDPTILESYNC: case F3D_G_RDPFULLSYNC:
-            case F3D_G_SPNOOP: case F3D_G_NOOP: case F3D_G_SETPRIMDEPTH: case F3D_G_SETCONVERT: case F3D_G_SETKEYR:
+            case F3D_G_SPNOOP: case F3D_G_SETPRIMDEPTH: case F3D_G_SETCONVERT: case F3D_G_SETKEYR:
             case F3D_G_SETKEYGB: case F3D_G_CULLDL:
                 break;
             default:
@@ -1366,6 +1439,8 @@ void f3d_run(const void* dl) {
     hold_frame();
     s_title = wx_game_state() == 0;
     map_setup();
+    s_world = 0;
+    s_anchor = 'C';
     R.mv_top = 0;
     R.mvp_dirty = 1;
     s_zorder = 0;
@@ -1379,7 +1454,8 @@ void f3d_run(const void* dl) {
     run_dl((const uint32_t*)dl);
     flush();
     if (s_title && XGFX_TITLE_FIT) {   /* the black margin around the fitted title picture (drawn last) */
-        int32_t m = (int32_t)(TITLE_MARGIN * s_ch / 480.0f), mx = m * s_out.xscale, cx = (int32_t)s_cx,
+        int32_t m = (int32_t)(TITLE_MARGIN * s_ch / 480.0f), mx = (int32_t)((float)m * s_cw / (s_ch * 4.0f / 3.0f)),
+                cx = (int32_t)s_cx,
                 cw = (int32_t)s_cw, ch = (int32_t)s_ch;
         xgfx_clear(cx, 0, cx + cw, m, 0xFF000000u, 1, 0, 1.0f);
         xgfx_clear(cx, ch - m, cx + cw, ch, 0xFF000000u, 1, 0, 1.0f);

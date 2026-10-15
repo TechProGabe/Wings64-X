@@ -1,0 +1,69 @@
+--- a/src/kernel/code_7150.c
++++ b/src/kernel/code_7150.c
+@@ -3,6 +3,9 @@
+ #include <uv_graphics.h>
+ #include <uv_vector.h>
+ #include "kernel/code_7150.h"
++#ifdef WINGS64_XBOX
++#include <wings64_widescreen.h> // PORT: hor+ culling (patches/050)
++#endif
+ 
+ #if defined(WINGS64_XBOX) && !defined(WINGS64_CULL_WIDEN)
+ /* bottom band: (240 - 115) / 107 = 1.17 of the viewport's half height; the rest is margin */
+@@ -35,6 +38,17 @@
+     temp_ft4 *= WINGS64_CULL_WIDEN;
+     temp_ft5 *= WINGS64_CULL_WIDEN;
+ #endif
++#ifdef WINGS64_XBOX
++    /* DIVERGES: hor+ widescreen shows a world view wider than 4:3 (the
++     * interpreter draws its perspective geometry past the 4:3 edges): the
++     * frustum's x follows, to at least the factor above, or objects and
++     * terrain pop at the 16:9 edges (Birdman64's code_7150.c patch) */
++    temp_fv0 = wings64_widescreen_xscale(arg0);
++    if (temp_fv0 > WINGS64_CULL_WIDEN) {
++        temp_fa1 *= temp_fv0 / WINGS64_CULL_WIDEN;
++        temp_fa0 *= temp_fv0 / WINGS64_CULL_WIDEN;
++    }
++#endif
+     arg0->unk208[0].x = temp_fa0;
+     arg0->unk208[0].y = arg0->unk1FC;
+     arg0->unk208[0].z = temp_ft4;
+--- a/src/kernel/chan.c
++++ b/src/kernel/chan.c
+@@ -10,6 +10,9 @@
+ #include <uv_terrain.h>
+ #include <libc/stdarg.h>
+ #include "kernel/code_7150.h"
++#ifdef WINGS64_XBOX
++#include <wings64_widescreen.h> // PORT: hor+ world-view tags (patches/050)
++#endif
+ 
+ UnkStruct_80204D94 D_80261730[2];
+ u8 D_80261E70[100];
+@@ -205,6 +208,16 @@
+     if (temp_s0->unk398 != NULL) {
+         temp_s0->unk398();
+     }
++#ifdef WINGS64_XBOX
++    /* DIVERGES: hor+ widescreen. The culling depends on the viewport, which
++     * may be set after the frustum: the planes are rebuilt for the current
++     * one; and the world view's draws are tagged for the interpreter, which
++     * extends only those past the 4:3 edges (Birdman64's chan.c patch) */
++    if (wings64_widescreen_aspect > 0.0f && temp_s0->unk1F8 != 0.0f) {
++        func_802061A0(temp_s0);
++    }
++    wings64_widescreen_tag(temp_s0, 1);
++#endif
+     func_80206318(temp_s0);
+     uvGfxMtxProj(temp_s0->unk50);
+     uvGfxPushMtxUnk(&temp_s0->unk190);
+@@ -292,6 +305,9 @@
+     if (temp_s0->unk39C != NULL) {
+         temp_s0->unk39C();
+     }
++#ifdef WINGS64_XBOX
++    wings64_widescreen_tag(temp_s0, 0); // PORT: end of the world view (patches/050)
++#endif
+ }
+ 
+ void uvChan_80205724(s32 arg0, s32 arg1, Mtx4F* arg2) {

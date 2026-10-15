@@ -3,6 +3,7 @@
 #define XHW_INTERNAL_H
 #include <stdarg.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <windows.h>
 
 /* Saves, settings and logs. Always on the HDD, so a burned-disc boot can
@@ -62,6 +63,12 @@ void xhw_watchdog_disable(void);
 void xhw_watchdog_busy(int on);   /* a long, deliberate stall (screenshot) */
 void xhw_code_repair(void);       /* xhw_code_repair.c: .text put back as default.xbe has it */
 void xhw_video_pb_up(void);        /* nv2a.c: pbkit is up, the retrace can follow its vblank */
+/* xhw_video.c: the lines to draw over this frame (the video-mode prompt,
+ * a notice), 0 when none; rgb is the text colour */
+int xhw_video_overlay(char lines[2][96], uint32_t* rgb, int* top);
+/* xhw_overlay.c: centred lines of text on a dark box over a finished frame,
+ * CPU writes (the GPU must be idle); `top`: near the top, else mid-screen */
+void xhw_overlay_lines(void* fb, int w, int h, int bpp, int pitch, char lines[2][96], int n, uint32_t rgb, int top);
 void xhw_clock_recheck(void);      /* xhw_clock.c: retraces against ACPI time (the watchdog, 30 s) */
 
 /* xhw_pad.c: stop USB before leaving the XBE (a quick reboot into the next

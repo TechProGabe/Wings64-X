@@ -3,6 +3,31 @@
 Newest first. Each milestone entry says what was verified and how; "xemu"
 results are emulator-only (no timing, audio or memory claims from them).
 
+## M1 — ROM validation (2026-10-15)
+
+Branch `worktree-agent-af49dbd909c92a453` (from `port` at M0; nothing pushed). PLAN 3.1 in full; procedure in `docs/rom.md`.
+
+- New: `xbox/include/xrom.h` (result struct, pure API), `xrom_known.h` (the
+  only place the SHA-1 lives), `xhw_sha1.c` (incremental), `xhw_rom.c` (pure
+  functions plus the Xbox find/load/hash/card half behind `XROM_HOST_TEST`).
+  `main_body` calls `xhw_rom_load_verified`, then `wx_boot(rom, size)`; the weak
+  default shows the "ROM verified: US v1.0" card. `xhw_error_card` keeps an
+  exit reason a caller already set (the ROM check sets `ROM check failed (...)`).
+- Tools: `rom_order.py` (z64/v64/n64 converter), `rom_leak_check.py`,
+  `test_rom_check.py` + `tests/xbox/test_rom_check.c`.
+- Verified, host: the test (55 checks, 0 failed, clang, no warnings at -Wall -Wextra):
+  SHA-1 vectors, z64/v64/n64 identical, every verdict and message.
+  `rom_leak_check.py` clean. The user's `.z64` has the table's SHA-1 and MD5 and
+  its `.v64` is byte-identical to `rom_order.py`'s conversion.
+- Verified, xemu only (no timing claims): the real ROM as z64, v64 and n64 each
+  `[ROM] verified: US v1.0 SHA-1 ok` with the same SHA-1; truncated, one-byte
+  corrupt, NPWJ, other game code, bad magic and no-ROM each show their card
+  with the `[ROM]`/`[BOOT]` lines in the serial log.
+- Not verified: the console; `lastexit.txt` content after a failure (xemu slots
+  start from a fresh HDD copy; the log line "lastexit.txt will say" shows the
+  reason set); load and hash time on real hardware (xemu: 32 ms, ~210 ms, not
+  meaningful); the `MX_ROM` getenv path (xemu has no environment).
+
 ## M0 — toolchain, skeleton, splash, first XBE (2026-10-15)
 
 Branch `port` (local; nothing pushed).

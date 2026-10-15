@@ -2,7 +2,7 @@
  *
  * Boot: hold the RAM above 64 MB, mount E:, create the save folder, open
  * boot.log, log the previous exit, start the watchdog, calibrate the clock
- * log, show the splash, find the user's ROM next to default.xbe (D:\), then
+ * log, show the splash, find and verify the user's ROM next to default.xbe (D:\), then
  * hand over to the game side (wx_boot), which never returns. */
 #include <hal/debug.h>
 #include <hal/video.h>
@@ -16,6 +16,9 @@
 
 #include "xhw.h"
 #include "xhw_internal.h"
+#include "xrom.h"
+
+static char s_exit_why[96];   /* xhw_exit_reason: written to lastexit.txt on the way out */
 
 void xhw_error_screen(const char* title, const char* const* lines) {
     int i;
@@ -51,8 +54,11 @@ void xhw_error_card(const char* title, const char* const* lines, int secs) {
     xhw_logf("[BOOT] card: %s", title);
     for (i = 0; lines && lines[i]; i++)
         if (lines[i][0]) xhw_logf("[BOOT]   %s", lines[i]);
-    snprintf(why, sizeof why, "card: %s", title);
-    xhw_exit_reason(why);
+    /* a caller that already set the exit reason (the ROM check) keeps it */
+    if (!s_exit_why[0]) {
+        snprintf(why, sizeof why, "card: %s", title);
+        xhw_exit_reason(why);
+    }
     xhw_splash_release();
     xhw_error_screen(title, lines);
     wait_then_dashboard(secs);
@@ -77,7 +83,6 @@ static void read_image_range(void) {
  * deletes it. No file: the console was switched off or reset, or the XBE
  * killed. Failures are ignored. */
 #define EXIT_FILE XHW_UDATA_DIR "lastexit.txt"
-static char s_exit_why[96];
 
 void xhw_exit_reason(const char* why) { snprintf(s_exit_why, sizeof s_exit_why, "%s", why); }
 
@@ -142,17 +147,26 @@ static void log_save_folder(void) {
     xhw_notice("Can't write to E:\\UDATA\\57580001 (E: full?).", "Saves, settings and screenshots won't be kept.");
 }
 
-/* The game side (xbox/src/game/wx_boot.c): finds and checks the ROM, loads
- * the settings, sets the video mode and runs the game. Never returns. A weak
- * default keeps the platform layer linkable on its own (M0). */
-void wx_boot(void);
-__attribute__((weak)) void wx_boot(void) {
-    static const char* const lines[] = {
-        "This build is the platform layer only (milestone M0):",
-        "the game is not linked yet.",
-        NULL,
-    };
-    xhw_error_card("Nothing to run", lines, 30);
+/* The game side (xbox/src/game/wx_boot.c): gets the verified, normalised ROM
+ * (z64 byte order, 8 MB), loads the settings, sets the video mode and runs
+ * the game. Never returns. A weak default keeps the platform layer linkable
+ * on its own: at M1 it shows what the ROM check found. */
+void wx_boot(const uint8_t* rom, uint32_t size);
+__attribute__((weak)) void wx_boot(const uint8_t* rom, uint32_t size) {
+    const xrom_info* r = xhw_rom_info();
+    char l1[80], l2[80], l3[80], l4[80], l5[80];
+    const char* lines[8];
+    (void)rom;
+    snprintf(l1, sizeof l1, "File: D:\\%s (%u bytes)", r->file, (unsigned)size);
+    snprintf(l2, sizeof l2, "Title \"%s\"  code %s  region %c  version %u", r->title, r->code, (char)r->region,
+             (unsigned)r->version);
+    snprintf(l3, sizeof l3, "CRC %08x %08x   byte order %s", (unsigned)r->crc1, (unsigned)r->crc2,
+             r->order == XROM_ORDER_Z64 ? "z64" : r->order == XROM_ORDER_V64 ? "v64" : "n64");
+    snprintf(l4, sizeof l4, "SHA-1 %s", r->sha1_hex);
+    snprintf(l5, sizeof l5, "Matches the known %s dump.", r->label);
+    lines[0] = l1; lines[1] = l2; lines[2] = l3; lines[3] = l4; lines[4] = "";
+    lines[5] = l5; lines[6] = "The game is not linked yet (milestone M1)."; lines[7] = NULL;
+    xhw_error_card("ROM verified: US v1.0", lines, 30);
 }
 
 static void main_body(void* arg) {
@@ -176,7 +190,11 @@ static void main_body(void* arg) {
     xhw_mem_log("boot");
     xhw_splash_show();
     xhw_autopad_load();
-    wx_boot();
+    {
+        xrom_info rom_info;
+        const uint8_t* rom = xhw_rom_load_verified(&rom_info);   /* or a card, then the dashboard */
+        wx_boot(rom, rom_info.size);
+    }
     xhw_quit_to_dashboard();
 }
 

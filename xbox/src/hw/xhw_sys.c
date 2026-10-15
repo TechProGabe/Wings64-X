@@ -416,6 +416,7 @@ static DWORD WINAPI spawn_entry(LPVOID p) {
     TlsSetValue(s_self_tls, t);
     t->kt = KeGetCurrentThread();
     apply_level(t->kt, (int)t->level);
+    xhw_prof_register(t->kt, (int)t->level);
     xhw_crash_guard(t->fn, t->arg);
     return 0;
 }

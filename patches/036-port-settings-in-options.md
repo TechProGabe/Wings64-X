@@ -1,13 +1,16 @@
 # 036-port-settings-in-options
 
-**Why:** maintainer, 2026-10-15: the port's settings panel is an item of the game's Option menu, "Port
-settings", instead of a title item (patches/035 takes it off the title).
+**Why:** maintainer, 2026-10-15: the port's settings panel ("Port settings") and "Exit to dashboard" are items
+of the game's Option menu instead of the title's (patches/035 takes them off the title).
 
-**What (`app/options.c`, `DIVERGES`):** `optionsInitMain` adds "Port settings" above "Quit" (text from
-`wings64_settings_options_label`, `xbox/src/game/settings_menu.c`) and starts the menu a row lower
-(the game's 80 / 100 become 60 / 80); `optionsHandlerMain` opens the panel for that item
-(`wings64_settings_screen`, after the screen fade the Option screen's other items use) and comes back
-to the Option menu, and maps "Quit" back to the game's own index.
+**What (`DIVERGES`):**
+- `app/options.c` `optionsInitMain`: "Port settings" and "Exit to dashboard" above "Quit" (texts from
+  `xbox/src/game/settings_menu.c`), the menu starting two rows lower (100 - 20 per item past three);
+  `sOptionMenuItems` holds six.
+- `optionsHandlerMain`: "Port settings" opens the panel (`wings64_settings_screen`, after the screen fade the
+  Option screen's other items use) and comes back to the Option menu; "Exit to dashboard" calls
+  `wings64_title_exit` (lastexit.txt, then the dashboard); "Quit" is mapped back to the game's own index.
+- `app/menu.c`: `sMenuItems` holds eight (a completed game's Option menu has six items).
 
 **Kill switch:** `-DWINGS64_SETTINGS_IN_OPTIONS=0` (or `WINGS64_SETTINGS_MENU=0`).
 

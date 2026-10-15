@@ -199,8 +199,9 @@ int wings64_settings_back_pressed(void) {
 /* PLAN.md 3.4: chosen like the other items (menuCheckInputs has played the
    confirm sound), written to lastexit.txt, then the dashboard. */
 void wings64_title_exit(void) {
-    xhw_log("[TITLE] Exit to dashboard");
-    xhw_exit_reason("exit to the dashboard from the title menu");
+    xhw_log("[MENU] Exit to dashboard");
+    xhw_exit_reason(WINGS64_SETTINGS_IN_OPTIONS ? "exit to the dashboard from the Option menu"
+                                                : "exit to the dashboard from the title menu");
     xhw_sleep_ms(300);   /* the confirm sound */
     xhw_quit_to_dashboard();
 }

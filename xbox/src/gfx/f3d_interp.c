@@ -1248,42 +1248,67 @@ static volatile int s_hold_req;
 static int s_hold_on;
 static uint32_t s_hold_tex;
 static float s_hold_u, s_hold_v;
+static int s_hold_linear;   /* s_hold_tex is the GPU hold surface (texel coordinates) */
 
 void f3d_hold_last(int on) { s_hold_req = XGFX_HOLD_LAST && on; }
 
-static void hold_frame(void) {
+#ifndef XGFX_HOLD_GPU
+#define XGFX_HOLD_GPU 1   /* 0: the CPU reads the last frame back (~244 ms a fade on the console) */
+#endif
+
+/* the whole framebuffer from texture `tex`, s 0..u, t 0..v (texel coordinates for a linear texture) */
+static void hold_quad(uint32_t tex, float u, float v, int filter) {
     XgfxState st;
-    XgfxVtx v[6];
+    XgfxVtx q[6];
     float x1 = (float)s_out.fb_w, y1 = (float)s_out.fb_h;
     int i;
-    if (s_hold_req != s_hold_on) {
-        s_hold_on = s_hold_req;
-        uint64_t t0 = xhw_time_us();
-        if (s_hold_tex) xgfx_tex_destroy(s_hold_tex);
-        s_hold_tex = s_hold_on ? xgfx_capture_last(&s_hold_u, &s_hold_v) : 0;
-        if (XHW_TEST_BUILD && s_hold_on) xhw_logf("[GFX] hold: last frame captured in %u ms", (unsigned)((xhw_time_us() - t0) / 1000u));
-        if (s_hold_on && !s_hold_tex) xhw_log("[GFX] hold: the last frame could not be captured (pool full)");
-    }
-    if (!s_hold_tex) return;
     memset(&st, 0, sizeof st);
     st.cc0 = cc_words_const(1 /* TEXEL0 */, 1, &st.cc1);
-    st.tex[0] = s_hold_tex;
+    st.tex[0] = tex;
     st.wrap_s[0] = st.wrap_t[0] = XGFX_WRAP_CLAMP;
-    st.filter[0] = s_hold_u * (float)s_out.fb_w > 1024.0f;   /* point at 1:1, bilinear when halved */
+    st.filter[0] = (uint32_t)filter;
     st.color_write = 1;
     st.scissor[2] = s_out.fb_w;
     st.scissor[3] = s_out.fb_h;
-    memset(v, 0, sizeof v);
+    memset(q, 0, sizeof q);
     for (i = 0; i < 6; i++) {
         static const uint8_t corner[6] = { 0, 1, 2, 2, 1, 3 };
         int c = corner[i];
-        v[i].x = (c & 1) ? x1 : 0.0f;
-        v[i].y = (c & 2) ? y1 : 0.0f;
-        v[i].w = 1.0f;
-        v[i].s0 = (c & 1) ? s_hold_u : 0.0f;
-        v[i].t0 = (c & 2) ? s_hold_v : 0.0f;
+        q[i].x = (c & 1) ? x1 : 0.0f;
+        q[i].y = (c & 2) ? y1 : 0.0f;
+        q[i].w = 1.0f;
+        q[i].s0 = (c & 1) ? u : 0.0f;
+        q[i].t0 = (c & 2) ? v : 0.0f;
     }
-    xgfx_draw(&st, v, 2);
+    xgfx_draw(&st, q, 2);
+}
+
+static void hold_frame(void) {
+    if (s_hold_req != s_hold_on) {
+        uint64_t t0 = xhw_time_us();
+        s_hold_on = s_hold_req;
+        if (s_hold_tex) xgfx_tex_destroy(s_hold_tex);
+        s_hold_tex = 0;
+        s_hold_linear = 0;
+        if (s_hold_on && XGFX_HOLD_GPU) {   /* one draw copies the last frame into the hold surface */
+            float w, h;
+            uint32_t last = xgfx_tex_linear_last(&w, &h);
+            if (last && xgfx_target_hold(1)) {
+                hold_quad(last, w, h, 0);
+                xgfx_target_hold(0);
+                s_hold_tex = xgfx_tex_linear_hold(&s_hold_u, &s_hold_v);
+                s_hold_linear = s_hold_tex != 0;
+            }
+            if (last) xgfx_tex_destroy(last);
+        }
+        if (s_hold_on && !s_hold_tex) s_hold_tex = xgfx_capture_last(&s_hold_u, &s_hold_v);
+        if (XHW_TEST_BUILD && s_hold_on)
+            xhw_logf("[GFX] hold: last frame captured %s in %u ms", s_hold_linear ? "on the GPU" : "by the CPU",
+                     (unsigned)((xhw_time_us() - t0) / 1000u));
+        if (s_hold_on && !s_hold_tex) xhw_log("[GFX] hold: the last frame could not be captured (pool full)");
+    }
+    if (!s_hold_tex) return;
+    hold_quad(s_hold_tex, s_hold_u, s_hold_v, !s_hold_linear && s_hold_u * (float)s_out.fb_w > 1024.0f);
 }
 
 void f3d_run(const void* dl) {

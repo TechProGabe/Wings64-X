@@ -344,6 +344,8 @@ typedef struct {
     uint32_t bytes;
     void* mem;
     uint32_t gen;       /* a new texture at a freed one's slot differs */
+    uint32_t pitch;     /* linear: bytes per row */
+    int linear;         /* a view of a surface (not the pool's, never freed here): texel coordinates */
 } Tex;
 static Tex s_tex[MAX_TEX];
 static int s_tex_next = 1;
@@ -461,7 +463,8 @@ uint32_t xgfx_tex_create(uint32_t w, uint32_t h, const uint32_t* argb) {
 
 void xgfx_tex_destroy(uint32_t tex) {
     if (!tex || tex >= MAX_TEX || !s_tex[tex].used) return;
-    defer_free(s_tex[tex].mem);
+    if (!s_tex[tex].linear) defer_free(s_tex[tex].mem);
+    s_tex[tex].linear = 0;
     s_tex[tex].used = 0;
     s_tex[tex].mem = NULL;
     s_tex_epoch++;
@@ -1001,6 +1004,19 @@ static void emit_textures(const XgfxState* st) {
             continue;
         }
         put1(NV097_SET_TEXTURE_OFFSET + b, (uint32_t)(uintptr_t)t->mem & 0x03FFFFFF);
+        if (t->linear) {   /* a surface as it lies in memory: texel coordinates, clamped */
+            put1(NV097_SET_TEXTURE_FORMAT + b, 1 | (1u << 3) | (2u << 4) |
+                                                   ((uint32_t)(s_bpp == 16 ? NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R5G6B5
+                                                                          : NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8R8G8B8)
+                                                    << 8) |
+                                                   (1u << 16));
+            put1(NV097_SET_TEXTURE_CONTROL1 + b, t->pitch << 16);
+            put1(NV097_SET_TEXTURE_IMAGE_RECT + b, (uint32_t)t->w << 16 | t->h);
+            put1(NV097_SET_TEXTURE_ADDRESS + b, 3u | (3u << 8) | (3u << 16));
+            put1(NV097_SET_TEXTURE_CONTROL0 + b, 0x4003FFC0u);
+            put1(NV097_SET_TEXTURE_FILTER + b, (1u << 16) | (1u << 24) | 0x2000u);
+            continue;
+        }
         put1(NV097_SET_TEXTURE_FORMAT + b, 1 | (1u << 3) | (2u << 4) |
                                                ((uint32_t)NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8R8G8B8 << 8) |
                                                (1u << 16) | ((uint32_t)log2i(t->w) << 20) | ((uint32_t)log2i(t->h) << 24));
@@ -1202,6 +1218,55 @@ void xgfx_read_rect(int32_t x0, int32_t y0, int32_t w, int32_t h, uint32_t* argb
             }
         }
     }
+}
+
+/* ---- the fade hold on the GPU (patches/026): a linear view of the picture
+ * presented last, copied by one draw into the back end's hold surface ---- */
+static void* s_hold_mem;
+
+static uint32_t linear_tex(void* mem, int w, int h, uint32_t pitch) {
+    static uint32_t s_lgen = 0x80000000u;
+    int id = alloc_handle();
+    if (!id || !mem) return 0;
+    s_tex[id].used = 1;
+    s_tex[id].linear = 1;
+    s_tex[id].w = (uint16_t)w;
+    s_tex[id].h = (uint16_t)h;
+    s_tex[id].bytes = 0;
+    s_tex[id].pitch = pitch;
+    s_tex[id].mem = mem;
+    s_tex[id].gen = ++s_lgen;
+    s_tex_epoch++;
+    return (uint32_t)id;
+}
+
+uint32_t xgfx_tex_linear_last(float* w, float* h) {
+    if (!s_last_fb) return 0;
+    *w = (float)s_fbw;
+    *h = (float)s_fbh;
+    return linear_tex(s_last_fb, s_fbw, s_fbh, pb_back_buffer_pitch());
+}
+
+int xgfx_target_hold(int on) {
+    uint32_t addr;
+    if (on && !s_hold_mem) {
+        s_hold_mem = MmAllocateContiguousMemoryEx(pb_back_buffer_pitch() * (uint32_t)s_fbh, 0, MAXRAM, 4096,
+                                                  PAGE_READWRITE | PAGE_WRITECOMBINE);
+        if (!s_hold_mem) xhw_log("[NV2A] hold surface: no contiguous memory (the CPU capture is used)");
+    }
+    if (!s_hold_mem) return 0;
+    xgfx_frame_begin();
+    addr = (uint32_t)(uintptr_t)(on ? s_hold_mem : pb_back_buffer()) & 0x03FFFFFFu;
+    pb_open();
+    put1(NV097_SET_SURFACE_COLOR_OFFSET, addr);
+    return 1;
+}
+
+uint32_t xgfx_tex_linear_hold(float* w, float* h) {
+    if (!s_hold_mem) return 0;
+    *w = (float)s_fbw;
+    *h = (float)s_fbh;
+    return linear_tex(s_hold_mem, s_fbw, s_fbh, pb_back_buffer_pitch());
 }
 
 uint32_t xgfx_capture_last(float* u_max, float* v_max) {

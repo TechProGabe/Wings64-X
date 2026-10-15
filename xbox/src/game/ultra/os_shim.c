@@ -40,7 +40,17 @@ static void unlock(void) { xhw_mutex_unlock(s_lock); }
  * order distinct: idle 0, app 10, kernel 12, audio 110, scheduler 127
  * (OS_PRIORITY_APPMAX), PI manager 150, render/fault 250, VI manager 254.
  * The watchdog sits above them all at 15. */
+#ifndef WX_AUDIO_THREAD_LEVEL
+#define WX_AUDIO_THREAD_LEVEL 14   /* 0: the audio manager in PW64's order (level 10) */
+#endif
+
 static int level_of(OSPri pri) {
+    /* DIVERGES: the audio manager (priority 110, audio_manager.c) runs above
+     * the scheduler (display lists, texture conversion) and the render
+     * thread: on the N64 the RSP mixed while they ran, here the CPU does and
+     * a long frame of theirs starved it (crackle in menu hitches, console
+     * run 2). It runs ~1 ms per retrace and waits otherwise. */
+    if (WX_AUDIO_THREAD_LEVEL && pri == 110) return WX_AUDIO_THREAD_LEVEL;
     if (pri <= 0) return 2;
     if (pri <= 10) return 8;
     if (pri <= 12) return 9;

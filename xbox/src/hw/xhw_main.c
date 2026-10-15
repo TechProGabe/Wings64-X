@@ -188,6 +188,7 @@ static void main_body(void* arg) {
     xhw_code_repair();   /* before the clock reads the TSC and before any game code runs */
     xhw_watchdog_start();
     xhw_clock_calibrate();
+    xhw_prof_start();
     xhw_mem_log("boot");
     xhw_splash_show();
     xhw_autopad_load();

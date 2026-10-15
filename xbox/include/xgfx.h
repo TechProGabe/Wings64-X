@@ -104,6 +104,15 @@ void xgfx_read_rect(int32_t x0, int32_t y0, int32_t w, int32_t h, uint32_t* argb
  * screen fades, patches/026): the picture fills u 0..u_max, v 0..v_max.
  * 0 when there is none or the pool is full. Waits for the GPU. */
 uint32_t xgfx_capture_last(float* u_max, float* v_max);
+/* The same on the GPU, no CPU read (the CPU capture cost ~244 ms a fade on
+ * the console): a linear texture viewing the picture presented last (texel
+ * coordinates: w x h), the hold surface as the render target (1) or the
+ * screen again (0; 0 returned when there is no hold surface), and a linear
+ * texture of the hold surface. A linear texture's memory is the surface's:
+ * xgfx_tex_destroy only drops the handle. */
+uint32_t xgfx_tex_linear_last(float* w, float* h);
+int xgfx_target_hold(int on);
+uint32_t xgfx_tex_linear_hold(float* w, float* h);
 
 void xgfx_debug_dump(void);   /* debug: the back buffer now, as [FBDUMP] */
 

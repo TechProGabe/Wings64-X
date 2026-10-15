@@ -1,3 +1,17 @@
+--- a/src/app/menu.c
++++ b/src/app/menu.c
+@@ -12,7 +12,11 @@
+ 
+ // arrays of pointers to 16-bit strings
+ // e.g. "Option" from main menu is 0x0078 0x0093 0x0097 0x008c 0x0092 0091 0x0ffe 0xffff
++#ifdef WINGS64_XBOX
++STATIC_DATA s16* sMenuItems[8]; // PORT: the Option menu has up to six items (patches/036)
++#else
+ STATIC_DATA s16* sMenuItems[5];
++#endif
+ STATIC_DATA s16 sMenuSpriteIdBase;
+ STATIC_DATA s16 sMenuSpriteHeight;
+ STATIC_DATA s16 sMenuCountVarHeight;
 --- a/src/app/options.c
 +++ b/src/app/options.c
 @@ -16,6 +16,9 @@
@@ -5,40 +19,51 @@
  #include "snd.h"
  #include "text_data.h"
 +#ifdef WINGS64_XBOX
-+#include <wings64_settings.h> // PORT: the port settings panel (patches/036)
++#include <wings64_settings.h> // PORT: the port settings panel and "Exit to dashboard" (patches/036)
 +#endif
  
  STATIC_DATA f32 sVolume[] = { 0.0f, 0.2f, 0.4f, 0.6f, 1.0f };
  STATIC_DATA s32 sStereoMono = 0;
-@@ -102,6 +105,27 @@
+@@ -28,7 +31,11 @@
+ STATIC_DATA s32 sStickHeld;
+ STATIC_DATA u8 sGameComplete; // flag to determine if game is complete
+ STATIC_DATA u8 sSaveFileIdx;
++#ifdef WINGS64_XBOX
++STATIC_DATA s32 sOptionMenuItems[6]; // PORT: "Port settings" and "Exit to dashboard" added (patches/036)
++#else
+ STATIC_DATA s32 sOptionMenuItems[5]; // menu items, at least 5
++#endif
+ 
+ // forward declarations
+ void optionsInit(void);
+@@ -102,6 +109,26 @@
      s32 count;
  
      saveFileLoad(D_80362690->unkC[D_80362690->unk9C].unk8A);
 +#if defined(WINGS64_XBOX) && WINGS64_SETTINGS_MENU && WINGS64_SETTINGS_IN_OPTIONS
-+    // DIVERGES: "Port settings" above "Quit" (the port's settings panel); the menu starts a row lower
++    // DIVERGES: "Port settings" and "Exit to dashboard" above "Quit"; the menu starts two rows lower
 +    if (sGameComplete != 0) {
 +        sOptionMenuItems[0] = TEXT_PHOTO_ALBUM;
 +        sOptionMenuItems[1] = TEXT_SOUND_OPTIONS;
 +        sOptionMenuItems[2] = TEXT_CONGURA;
-+        sOptionMenuItems[3] = TEXT_QUIT; // the text is set below
-+        sOptionMenuItems[4] = TEXT_QUIT;
-+        count = 5;
-+        menuY = 60;
++        count = 3;
 +    } else {
 +        sOptionMenuItems[0] = TEXT_PHOTO_ALBUM;
 +        sOptionMenuItems[1] = TEXT_SOUND_OPTIONS;
-+        sOptionMenuItems[2] = TEXT_QUIT; // the text is set below
-+        sOptionMenuItems[3] = TEXT_QUIT;
-+        count = 4;
-+        menuY = 80;
++        count = 2;
 +    }
++    sOptionMenuItems[count++] = TEXT_QUIT; // "Port settings", set below
++    sOptionMenuItems[count++] = TEXT_QUIT; // "Exit to dashboard", set below
++    sOptionMenuItems[count++] = TEXT_QUIT;
++    menuY = 100 - (count - 3) * 20;
 +    menuCreateItems(80, menuY, 6, 1.0f, 1.0f, sOptionMenuItems, count);
-+    menuSetItem(count - 2, wings64_settings_options_label());
++    menuSetItem(count - 3, wings64_settings_options_label());
++    menuSetItem(count - 2, wings64_title_exit_label());
 +#else
      if (sGameComplete != 0) {
          sOptionMenuItems[0] = TEXT_PHOTO_ALBUM;
          sOptionMenuItems[1] = TEXT_SOUND_OPTIONS;
-@@ -117,6 +141,7 @@
+@@ -117,6 +144,7 @@
          menuY = 100;
      }
      menuCreateItems(80, menuY, 6, 1.0f, 1.0f, sOptionMenuItems, count);
@@ -46,13 +71,13 @@
      menuUtilSetColors(MENU_COLOR_ITEM, 0xFF, 0xFF, 0xFF);
      menuUtilSetColors(MENU_COLOR_SELECTED, 0xFF, 0xFF, 0x00);
  }
-@@ -174,6 +199,19 @@
+@@ -174,6 +202,22 @@
      u32 temp_t7;
  
      temp_v0 = menuCheckInputs();
 +#if defined(WINGS64_XBOX) && WINGS64_SETTINGS_MENU && WINGS64_SETTINGS_IN_OPTIONS
-+    // DIVERGES: "Port settings" (the item above "Quit") opens the port's settings panel and comes back here;
-+    // "Quit" moves down a row, so it is mapped back to the game's own index
++    // DIVERGES: "Port settings" opens the port's settings panel and comes back here; "Exit to dashboard" leaves for
++    // the dashboard; "Quit", two rows lower, is mapped back to the game's own index
 +    if (temp_v0 == (sGameComplete ? 3 : 2)) {
 +        func_8032D51C(0);
 +        wings64_settings_screen();
@@ -60,7 +85,10 @@
 +        return -1;
 +    }
 +    if (temp_v0 == (sGameComplete ? 4 : 3)) {
-+        temp_v0--;
++        wings64_title_exit();
++    }
++    if (temp_v0 == (sGameComplete ? 5 : 4)) {
++        temp_v0 = sGameComplete ? 3 : 2;
 +    }
 +#endif
      temp_t7 = temp_v0 + 1;

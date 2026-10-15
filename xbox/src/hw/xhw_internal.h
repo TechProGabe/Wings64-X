@@ -71,4 +71,8 @@ void xhw_pad_shutdown(void);
 uint32_t xhw_pad_events_queued(void);
 void xhw_audio_shutdown(void);
 
+/* xhw_prof.c (-DXHW_PROF=1): the sampling profiler over the game's threads */
+void xhw_prof_register(void* kthread, int level);
+void xhw_prof_start(void);
+
 #endif

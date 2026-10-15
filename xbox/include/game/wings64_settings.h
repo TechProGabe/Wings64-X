@@ -22,10 +22,10 @@
 #define WINGS64_TITLE_EXIT 1
 #endif
 /* WINGS64_SETTINGS_IN_OPTIONS (default 1; maintainer, 2026-10-15): the
- * panel is "Port settings", an item of the game's Option menu (patches/036),
- * and the title menu is "Start game", "Option", "Exit to dashboard" in a box
- * at the bottom of the screen (patches/035); BACK on the title still opens
- * the panel. 0: the title's "Settings" item and the box as patches/031 left
+ * panel ("Port settings") and "Exit to dashboard" are items of the game's
+ * Option menu (patches/036), and the title keeps the game's two items in a
+ * box at the bottom of the screen (patches/035); BACK on the title still
+ * opens the panel. 0: the title's "Settings" item and the box as patches/031 left
  * them. WINGS64_TITLE_COPYRIGHT (default 0, patches/035): 1 keeps the
  * title's copyright line (and the menu box at its old place). */
 #ifndef WINGS64_SETTINGS_IN_OPTIONS

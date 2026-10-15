@@ -1,15 +1,14 @@
 --- a/src/app/title_screen.c
 +++ b/src/app/title_screen.c
-@@ -213,11 +213,19 @@
+@@ -213,11 +213,18 @@
      menuCreateItems(94, 60, 6, 1.0f, 1.0f, sMainMenuItems, 2);
  #elif defined(WINGS64_XBOX) && WINGS64_SETTINGS_MENU
  #if WINGS64_TITLE_EXIT
 +#if WINGS64_SETTINGS_IN_OPTIONS
-+    // DIVERGES: title menu "Start game", "Option", "Exit to dashboard" (the port settings are in Option), in a box at
-+    // the bottom of the screen, clear of the pilots' faces
++    // DIVERGES: the game's two title items ("Port settings" and "Exit to dashboard" are in Option, patches/036) in a
++    // box at the bottom of the screen, clear of the pilots' faces
 +    sTitleMenuRow = wings64_settings_title_init();
-+    menuCreateItems(102, wings64_title_menu_y(), 6, 1.0f, 1.0f, sMainMenuItems, 3);
-+    menuSetItem(2, wings64_title_exit_label());
++    menuCreateItems(102, wings64_title_menu_y(), 6, 1.0f, 1.0f, sMainMenuItems, 2);
 +#else
      // DIVERGES: title "Exit to dashboard" item (two rows added below "Option": "Settings", "Exit to dashboard")
      sTitleMenuRow = 2 * wings64_settings_title_init();
@@ -20,20 +19,7 @@
  #else
      sTitleMenuRow = wings64_settings_title_init();
      menuCreateItems(102, 60 - sTitleMenuRow, 6, 1.0f, 1.0f, sMainMenuItems, 3);
-@@ -459,6 +467,12 @@
- #endif
-         menuUtilSetSoundFlags(MENU_SOUND_CHANGE | MENU_SOUND_SELECT);
-         temp_v0 = menuCheckInputs();
-+#if defined(WINGS64_XBOX) && WINGS64_SETTINGS_MENU && WINGS64_TITLE_EXIT && WINGS64_SETTINGS_IN_OPTIONS
-+        // DIVERGES: the third title item is "Exit to dashboard" (case 3); BACK below still opens the port settings (2)
-+        if (temp_v0 == 2) {
-+            temp_v0 = 3;
-+        }
-+#endif
- #if defined(WINGS64_XBOX) && WINGS64_SETTINGS_MENU
-         // DIVERGES: BACK (no N64 button) opens the port settings panel, as choosing "Settings" does
-         if (temp_v0 < 0 && wings64_settings_back_pressed()) {
-@@ -528,13 +542,22 @@
+@@ -528,13 +535,22 @@
      }
  
      screenDrawBoxSetup();
@@ -49,14 +35,14 @@
      // DIVERGES: title "Exit to dashboard" item (the box grows right to hold its text)
 +#if WINGS64_SETTINGS_IN_OPTIONS
 +    // DIVERGES: the title menu's box at the bottom of the screen (patches/035)
-+    screenDrawBox(97, wings64_title_box_bottom(), wings64_title_box_right(202), wings64_title_box_top(3), 0, 0, 0, sp30);
++    screenDrawBox(97, wings64_title_box_bottom(), 202, wings64_title_box_top(2), 0, 0, 0, sp30);
 +#else
      screenDrawBox(97, 76 - sTitleMenuRow, wings64_title_box_right(202), 118, 0, 0, 0, sp30);
 +#endif
  #else
      screenDrawBox(97, 76 - sTitleMenuRow, 202, 118, 0, 0, 0, sp30);
  #endif
-@@ -547,7 +570,11 @@
+@@ -547,7 +563,11 @@
      }
  
      uvFontGenDlist();

@@ -74,10 +74,10 @@ void xhw_audio_write(const int16_t* stereo, uint32_t frames) {
 #define XHW_AUDIO_PUMP_LEVEL 14
 #endif
 #ifndef XHW_AUDIO_MAX_MS
-#define XHW_AUDIO_MAX_MS 120
+#define XHW_AUDIO_MAX_MS 200
 #endif
 #ifndef XHW_AUDIO_TARGET_MS
-#define XHW_AUDIO_TARGET_MS 50
+#define XHW_AUDIO_TARGET_MS 80
 #endif
 static volatile uint32_t s_skipped;   /* samples skipped by the latency cap */
 

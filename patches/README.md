@@ -64,8 +64,8 @@ bit-field ones hold because the game triple uses GCC's layout
 | 032 | static-data sources of `_uvMediaCopy` copied as RAM (save mirror, Birdman take-off pad) | Wings64-X own |
 | 033 | UB: `uvLevelInit` COMM copy clamped to `UVBlockCounts` (it overwrote `alGlobals`) | Wings64-X own |
 | 034 | title menu: BACK opens the Settings panel (`DIVERGES`) | Wings64-X own |
-| 035 | title menu: "Start game", "Option", "Exit to dashboard" at the bottom, no copyright line (`DIVERGES`, `WINGS64_SETTINGS_IN_OPTIONS`, `WINGS64_TITLE_COPYRIGHT`) | Wings64-X own |
-| 036 | Option menu: "Port settings" item opens the port panel (`DIVERGES`, `WINGS64_SETTINGS_IN_OPTIONS`) | Wings64-X own |
+| 035 | title menu: the game's two items at the bottom, no copyright line (`DIVERGES`, `WINGS64_SETTINGS_IN_OPTIONS`, `WINGS64_TITLE_COPYRIGHT`) | Wings64-X own |
+| 036 | Option menu: "Port settings" and "Exit to dashboard" (`DIVERGES`, `WINGS64_SETTINGS_IN_OPTIONS`) | Wings64-X own |
 
 The port-side functions these call: `xbox/src/game/rom/` (`pw64_swap`, the
 loaders, the arena, `N64_K0`'s base), `xbox/src/game/ultra/fatal.c`

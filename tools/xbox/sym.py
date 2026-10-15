@@ -49,12 +49,31 @@ def lookup(syms, keys, addr):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--map', default=os.path.join(ROOT, 'build-xbox', 'wings64_x.map'))
+    ap.add_argument('--prof', action='store_true',
+                    help='fold the [PROF] addr:samples lines of the given logs into functions (xhw_prof.c)')
     ap.add_argument('inputs', nargs='+', help='crash.log / boot.log, or hex addresses')
     a = ap.parse_args()
     syms = load(a.map)
     if not syms:
         sys.exit(f'no symbols in {a.map}')
     keys = [s[0] for s in syms]
+    if a.prof:
+        per = {}
+        total = 0
+        for arg in a.inputs:
+            with open(arg, errors='replace') as f:
+                for line in f:
+                    if not line.startswith('[PROF] ') or ':' not in line.split()[1]:
+                        continue
+                    for tok in line.split()[1:]:
+                        addr, n = tok.split(':')
+                        i = bisect.bisect_right(keys, int(addr, 16)) - 1
+                        name = f'{syms[i][1]} ({syms[i][2]})' if i >= 0 else '?'
+                        per[name] = per.get(name, 0) + int(n)
+                        total += int(n)
+        for name, n in sorted(per.items(), key=lambda kv: -kv[1])[:60]:
+            print(f'{n:7} {100.0 * n / max(total, 1):5.1f}%  {name}')
+        return
     addrs = []
     for arg in a.inputs:
         if os.path.isfile(arg):

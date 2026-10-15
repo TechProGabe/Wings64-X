@@ -66,6 +66,15 @@
 #define MTX_DEPTH 11           /* 10 pushes + current (Birdman64 gfx.md) */
 #define DL_DEPTH 18
 #define GUARD 2.0f             /* x/y clipped at +-GUARD*w: screen coordinates stay well inside the NV2A's range */
+/* DIVERGES: triangles are trivially rejected beyond the drawn extent, not
+ * at the viewport edge: the port draws past the SUBSCREEN viewport (10..310 x
+ * 8..222) to the screen edges, where the RDP's scissor cut the picture, so a
+ * terrain triangle wholly in that band (18 px at the bottom) was dropped and
+ * terrain popped at the edges on fast turns. 1.2 > 160/150 and 125/107;
+ * -DXGFX_REJECT_RATIO=1.0f is the old reject. */
+#ifndef XGFX_REJECT_RATIO
+#define XGFX_REJECT_RATIO 1.2f
+#endif
 
 /* ------------------------------------------------------------------ state */
 
@@ -227,16 +236,17 @@ static void do_vtx(uint32_t w0, uint32_t w1) {
         float x = ob[0], y = ob[1], z = ob[2];
         const float(*m)[4] = R.mvp;
         uint32_t o = 0;
-        float gw;
+        float gw, rw;
         v->x = x * m[0][0] + y * m[1][0] + z * m[2][0] + m[3][0];
         v->y = x * m[0][1] + y * m[1][1] + z * m[2][1] + m[3][1];
         v->z = x * m[0][2] + y * m[1][2] + z * m[2][2] + m[3][2];
         v->w = x * m[0][3] + y * m[1][3] + z * m[2][3] + m[3][3];
         gw = GUARD * v->w;
-        if (v->x > v->w) o |= 1;
-        if (v->x < -v->w) o |= 2;
-        if (v->y > v->w) o |= 4;
-        if (v->y < -v->w) o |= 8;
+        rw = XGFX_REJECT_RATIO * v->w;
+        if (v->x > rw) o |= 1;
+        if (v->x < -rw) o |= 2;
+        if (v->y > rw) o |= 4;
+        if (v->y < -rw) o |= 8;
         if (v->z < -v->w) o |= 16;
         if (v->z + v->w < 0.0f || v->x > gw || v->x < -gw || v->y > gw || v->y < -gw) o |= 32;
         if (XGFX_FAR_CLIP && v->z > v->w) o |= 64 | 32;
@@ -346,14 +356,15 @@ static void flush(void) {
                  s_st.env[0], s_st.env[1], s_st.env[2], s_st.env[3], (unsigned)R.geom, (unsigned)R.oml,
                  (int)s_batch[0].x, (int)s_batch[0].y, (int)(s_batch[0].z * 1000.0f / s_out.zmax), s_batch[0].rgba[3]);
     xgfx_draw(&s_st, s_batch, s_nb);
-    if (s_trace) {   /* the first draw nearer than 0.9: everything far is down by now */
-        static int dumped;
-        if (!dumped && s_batch[0].z < 0.9f * s_out.zmax && s_st.depth_func != XGFX_DEPTH_OFF) {
-            dumped = 1;
-            xhw_log("[DRAW] dump before this draw's effect (the far scene)");
+#ifdef XGFX_TRACE_DUMP_AT
+    if (s_trace) {   /* -DXGFX_TRACE_DUMP_AT=<n>: the picture after the trace frame's n-th draw */
+        static int s_ndraw;
+        if (++s_ndraw == XGFX_TRACE_DUMP_AT) {
+            xhw_logf("[DRAW] dump after draw %d", s_ndraw);
             xgfx_debug_dump();
         }
     }
+#endif
     s_nb = 0;
 }
 
@@ -720,8 +731,20 @@ static void lerp_vtx(Vtx* o, const Vtx* a, const Vtx* b, float t) {
 
 /* Sutherland-Hodgman in clip space against near (z + w >= 0), the x/y
  * guard band and far (z <= w); few triangles need it */
+#ifdef XGFX_DEBUG_NOCULL
+#define CULLMASK 0u
+#else
+#define CULLMASK (F3D_G_CULL_FRONT | F3D_G_CULL_BACK)
+#endif
+
+#ifdef XGFX_DEBUG_NOCLIPCULL
+#define CLIPCULLMASK 0u
+#else
+#define CLIPCULLMASK CULLMASK
+#endif
+
 static void clip_tri(Vtx* const v[3], const Vtx* flat) {
-    const uint32_t cullmask = F3D_G_CULL_FRONT | F3D_G_CULL_BACK;
+    const uint32_t cullmask = CLIPCULLMASK;
     Vtx bufA[12], bufB[12], *in = bufA, *out = bufB, *tmp;
     int n = 3, plane, i;
     for (i = 0; i < 3; i++) in[i] = *v[i];
@@ -764,7 +787,7 @@ static void clip_tri(Vtx* const v[3], const Vtx* flat) {
     emit_poly(in, n, flat);
 }
 
-static uint32_t s_t_in, s_t_rej, s_t_cull, s_t_clip, s_t_shadow, s_vtx_loads, s_mtx_loads;
+static uint32_t s_t_in, s_t_rej, s_t_cull, s_t_clip, s_t_shadow, s_vtx_loads, s_mtx_loads, s_rects, s_fills, s_zclears;
 
 static void do_tri(int ia, int ib, int ic, int flag) {
     Vtx* v[3] = { &R.vc[ia], &R.vc[ib], &R.vc[ic] };
@@ -775,10 +798,15 @@ static void do_tri(int ia, int ib, int ic, int flag) {
     s_t_in++;
     if (v[0]->oc & v[1]->oc & v[2]->oc & (31 | 64)) { s_t_rej++; return; }   /* all beyond one plane */
     needs_clip = ((v[0]->oc | v[1]->oc | v[2]->oc) & 32) != 0;
-    if ((R.geom & (F3D_G_CULL_FRONT | F3D_G_CULL_BACK)) && !needs_clip) {
-        float det = v[0]->x * (v[1]->y * v[2]->w - v[2]->y * v[1]->w) - v[0]->y * (v[1]->x * v[2]->w - v[2]->x * v[1]->w) +
-                    v[0]->w * (v[1]->x * v[2]->y - v[2]->x * v[1]->y);
-        float cross = -det;
+    if ((R.geom & CULLMASK) && !needs_clip) {
+        /* screen-space orientation, as the RSP culls: every w is > 0 here. The
+         * homogeneous 3x3 determinant (wings64-dc's) has the same sign in exact
+         * arithmetic, but in float it cancelled to the wrong sign on large
+         * near triangles (the sea under a low glider came out black). */
+        float i0 = 1.0f / v[0]->w, i1 = 1.0f / v[1]->w, i2 = 1.0f / v[2]->w;
+        float x0 = v[0]->x * i0, y0 = v[0]->y * i0, x1 = v[1]->x * i1, y1 = v[1]->y * i1;
+        float x2 = v[2]->x * i2, y2 = v[2]->y * i2;
+        float cross = -((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0));
         if ((R.geom & F3D_G_CULL_BACK) && cross >= 0.0f) { s_t_cull++; return; }
         if ((R.geom & F3D_G_CULL_FRONT) && cross <= 0.0f) { s_t_cull++; return; }
     }
@@ -858,11 +886,13 @@ static void screen_quad(float x0, float y0, float x1, float y1, float s0, float 
 
 static void do_fillrect(uint32_t w0, uint32_t w1) {
     uint16_t lrx, lry, ulx, uly;
+    s_fills++;
     int cycle = (R.omh >> F3D_G_MDSFT_CYCLETYPE) & 3;
     f3d_fillrect_decode(w0, w1, &lrx, &lry, &ulx, &uly);
     if (cycle >= 2) { lrx++; lry++; }   /* fill/copy include the lower-right edge */
     if (R.cimg == R.zimg && R.cimg) {   /* z-buffer clear (Birdman64 gfx.md) */
         float x0 = ulx, y0 = uly, x1 = lrx, y1 = lry;
+        s_zclears++;
         flush();
         if (s_trace) xhw_logf("[DRAW] z clear %d,%d-%d,%d fill %08x", ulx, uly, lrx, lry, (unsigned)R.fill);
         if (x0 <= SUB_X0 && x1 >= SUB_X1 && y0 <= SUB_Y0 && y1 >= SUB_Y1) {   /* SUBSCREEN-sized: the whole picture */
@@ -909,6 +939,7 @@ static void do_fillrect(uint32_t w0, uint32_t w1) {
 
 static void do_texrect(uint32_t w0, uint32_t w1) {
     uint16_t xl, yl, xh, yh;
+    s_rects++;
     uint8_t tile;
     int16_t s, t, dsdx, dtdy;
     int cycle = (R.omh >> F3D_G_MDSFT_CYCLETYPE) & 3;
@@ -1201,6 +1232,55 @@ static int s_init;
 static uint32_t s_frames;
 static uint64_t s_dl_us;
 
+/* ---- the frozen frame under the game's screen fades (patches/026) ----
+ * DIVERGES: the N64 copies the last frame into both colour buffers and draws
+ * each fade step over it; the back end clears every frame, so the picture
+ * presented last is captured once and drawn first in every frame until the
+ * fade ends (as wings64-dc replays its last polygon lists). Without it every
+ * fade ran over black: a black flash at each menu and level change. */
+#ifndef XGFX_HOLD_LAST
+#define XGFX_HOLD_LAST 1
+#endif
+static volatile int s_hold_req;
+static int s_hold_on;
+static uint32_t s_hold_tex;
+static float s_hold_u, s_hold_v;
+
+void f3d_hold_last(int on) { s_hold_req = XGFX_HOLD_LAST && on; }
+
+static void hold_frame(void) {
+    XgfxState st;
+    XgfxVtx v[6];
+    float x1 = (float)s_out.fb_w, y1 = (float)s_out.fb_h;
+    int i;
+    if (s_hold_req != s_hold_on) {
+        s_hold_on = s_hold_req;
+        if (s_hold_tex) xgfx_tex_destroy(s_hold_tex);
+        s_hold_tex = s_hold_on ? xgfx_capture_last(&s_hold_u, &s_hold_v) : 0;
+        if (s_hold_on && !s_hold_tex) xhw_log("[GFX] hold: the last frame could not be captured (pool full)");
+    }
+    if (!s_hold_tex) return;
+    memset(&st, 0, sizeof st);
+    st.cc0 = cc_words_const(1 /* TEXEL0 */, 1, &st.cc1);
+    st.tex[0] = s_hold_tex;
+    st.wrap_s[0] = st.wrap_t[0] = XGFX_WRAP_CLAMP;
+    st.filter[0] = s_hold_u * (float)s_out.fb_w > 1024.0f;   /* point at 1:1, bilinear when halved */
+    st.color_write = 1;
+    st.scissor[2] = s_out.fb_w;
+    st.scissor[3] = s_out.fb_h;
+    memset(v, 0, sizeof v);
+    for (i = 0; i < 6; i++) {
+        static const uint8_t corner[6] = { 0, 1, 2, 2, 1, 3 };
+        int c = corner[i];
+        v[i].x = (c & 1) ? x1 : 0.0f;
+        v[i].y = (c & 2) ? y1 : 0.0f;
+        v[i].w = 1.0f;
+        v[i].s0 = (c & 1) ? s_hold_u : 0.0f;
+        v[i].t0 = (c & 2) ? s_hold_v : 0.0f;
+    }
+    xgfx_draw(&st, v, 2);
+}
+
 void f3d_run(const void* dl) {
     uint64_t t0 = xhw_time_us();
     int i;
@@ -1210,6 +1290,7 @@ void f3d_run(const void* dl) {
         for (i = 0; i < 16; i++) R.mv[0][i >> 2][i & 3] = R.proj[i >> 2][i & 3] = (i % 5) == 0 ? 1.0f : 0.0f;
     }
     xgfx_frame_begin();
+    hold_frame();
     s_title = wx_game_state() == 0;
     map_setup();
     R.mv_top = 0;
@@ -1237,6 +1318,29 @@ void f3d_run(const void* dl) {
     if (s_frames % 600 == 0)
         xhw_logf("[GFX] frame %u state %d: tris %u, rejected %u, culled %u, clipped %u | vtx loads %u, mtx %u",
                  s_frames, wx_game_state(), s_t_in, s_t_rej, s_t_cull, s_t_clip, s_vtx_loads, s_mtx_loads);
+    {   /* frames that drew next to nothing: what they did (the in-game flashing) */
+        static unsigned s_nthin;
+        if (XHW_TEST_BUILD && s_t_in < 20 && !s_hold_tex && s_nthin < 40) {
+            s_nthin++;
+            xhw_logf("[GFX] thin frame %u state %d: tris %u, vtx loads %u, mtx %u, rects %u, fills %u, zclears %u, "
+                     "cimg %08x zimg %08x", s_frames, wx_game_state(), s_t_in, s_vtx_loads, s_mtx_loads, s_rects,
+                     s_fills, s_zclears, (unsigned)R.cimg, (unsigned)R.zimg);
+        }
+    }
+    {   /* frames that drew far less (or far more) than the one before: what flickers */
+        static uint32_t s_prev_tris, s_prev_state, s_nodd;
+        int st = wx_game_state();
+        if (XHW_TEST_BUILD && s_frames > 0 && st == (int)s_prev_state && s_nodd < 200 &&
+            (s_t_in * 2 < s_prev_tris || s_t_in > s_prev_tris * 2) && (s_t_in > 30 || s_prev_tris > 30)) {
+            s_nodd++;
+            xhw_logf("[GFX] odd frame %u state %d: tris %u (before %u), vtx loads %u, mtx %u, rects %u, fills %u, "
+                     "zclears %u, cimg %08x", s_frames, st, s_t_in, s_prev_tris, s_vtx_loads, s_mtx_loads, s_rects,
+                     s_fills, s_zclears, (unsigned)R.cimg);
+        }
+        s_prev_tris = s_t_in;
+        s_prev_state = (uint32_t)st;
+    }
+    s_rects = s_fills = s_zclears = 0;
     s_t_in = s_t_rej = s_t_cull = s_t_clip = s_vtx_loads = s_mtx_loads = 0;
     if (++s_frames % 600 == 0) {
         xhw_logf("[GFX] frame %u: display lists %u us a frame (avg over 600)", s_frames, (unsigned)(s_dl_us / 600));

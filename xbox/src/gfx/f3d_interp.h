@@ -8,6 +8,9 @@
 void f3d_run(const void* dl);
 /* Level load (the game reuses its heap): drop every cached texture. */
 void f3d_tex_reset(void);
+/* Screen fades (patches/026): 1 keeps the picture presented last under every
+ * following frame, 0 ends it. Taken at the next frame (any thread may call). */
+void f3d_hold_last(int on);
 
 /* ---- hooks (xbox/src/game) ---- */
 /* An address as a display list holds it -> a host pointer (rdram.c: the

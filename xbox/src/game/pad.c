@@ -33,7 +33,9 @@ static volatile uint32_t s_retraces;
 void wx_pad_retrace(void) { s_retraces++; }
 int wx_pad_stick_raw_pct(void) { return s_raw_pct; }
 
-/* radial dead zone, then the remaining range rescaled onto 0..80 */
+/* radial dead zone, then the remaining range rescaled onto 0..80. Rounded
+ * by hand: nxdk's lrintf is a stub that asserts (it hung the console at the
+ * first stick input in flight). */
 static void stick(const xhw_pad* p, s8* sx, s8* sy, int port) {
     float x = p->lx / 32767.0f, y = p->ly / 32767.0f;
     float mag = sqrtf(x * x + y * y), dz = (float)g_wx_settings.stick_deadzone / 100.0f, k;
@@ -50,8 +52,8 @@ static void stick(const xhw_pad* p, s8* sx, s8* sy, int port) {
     k = (mag - dz) / (1.0f - dz) / mag * 80.0f;
     x *= k;
     y *= k;
-    *sx = (s8)(x > 80.0f ? 80 : x < -80.0f ? -80 : (int)lrintf(x));
-    *sy = (s8)(y > 80.0f ? 80 : y < -80.0f ? -80 : (int)lrintf(y));
+    *sx = (s8)(x > 80.0f ? 80 : x < -80.0f ? -80 : (int)(x + (x >= 0.0f ? 0.5f : -0.5f)));
+    *sy = (s8)(y > 80.0f ? 80 : y < -80.0f ? -80 : (int)(y + (y >= 0.0f ? 0.5f : -0.5f)));
 }
 
 void wx_pad_read(void* out) {
@@ -91,6 +93,11 @@ void wx_pad_read(void* out) {
         if ((p.buttons & XHW_BTN_BLACK) || p.rx > CSTICK_ON) b |= R_CBUTTONS;
         if (p.lt >= TRIG_ON) b |= Z_TRIG;
         if (p.rt >= TRIG_ON) b |= R_TRIG;
+        if (XHW_TEST_BUILD && i == 0) {   /* test builds: what the game is handed, when it changes */
+            static u16 s_last;
+            if (b != s_last) xhw_logf("[PAD] port 1 buttons %04x at retrace %u", b, xhw_frame_count());
+            s_last = b;
+        }
         pads[i].button = b;
         stick(&p, &pads[i].stick_x, &pads[i].stick_y, i);
         pads[i].errno = 0;

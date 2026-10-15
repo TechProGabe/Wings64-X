@@ -13,6 +13,7 @@
 #include <wings64_fbfreeze.h>
 
 #include "../wx_game.h"
+#include "../../gfx/f3d_interp.h"
 
 /* ---- patches/021: the Settings menu (M7: xbox/src/game/settings.c) ---- */
 int wings64_settings_title_init(void) {
@@ -40,11 +41,12 @@ int wings64_settings_screen(void) {
 void wings64_settings_frame(void) {
 }
 
-/* ---- patches/026, 028: frame-buffer persistence (the renderer, M3-M4) ---- */
-/* DIVERGES: until the renderer decides, fades and the album draw over
- * whatever the colour buffer holds. */
+/* ---- patches/026, 028: frame-buffer persistence ---- */
+/* patches/026: the fades draw over the last frame (f3d_interp.c hold_frame;
+ * kill switch -DXGFX_HOLD_LAST=0). DIVERGES (028, until M8): the album draws
+ * over whatever the colour buffer holds. */
 void wings64_fb_freeze(int on) {
-    (void)on;
+    f3d_hold_last(on);
 }
 
 void wings64_fb_persist(int on) {

@@ -3,6 +3,48 @@
 Newest first. Each milestone entry says what was verified and how; "xemu"
 results are emulator-only (no timing, audio or memory claims from them).
 
+## M3 (in progress) — in-game picture fixes from the first watched sessions (2026-10-15)
+
+Branch `port`; nothing pushed. The game boots to the title, the menus and
+flight (commit a3bc3cf); the maintainer watched xemu while an autopad
+scenario played (`tools/xbox/scenarios/autopad.txt`, frames = presented
+frames) and reported issues. All results below are xemu-only.
+
+- Freeze at the start of the glider: nxdk's `lrintf` is a stub that asserts;
+  `pad.c` rounds by hand. Verified: the map no longer references `_lrintf`,
+  flight runs.
+- Black fades (`patches/026`'s hook was a no-op): `f3d_interp.c` `hold_frame`
+  + `nv2a.c` `xgfx_capture_last` keep the last presented picture under each
+  fade frame. `-DXGFX_HOLD_LAST=0`. Verified by log: the 2-triangle fade
+  frames over a cleared screen are gone at every menu change.
+- Whole-screen flashes in flight ("white / another colour / an older frame"):
+  pbkit sometimes retires a queued flip without writing PCRTC (its DPC runs a
+  vblank the ISR did not see), so the screen stays on an older buffer, which
+  is the next back buffer; the old 4-vblank guard then drew the next frame on
+  the buffer being shown. Now the present waits for the flip
+  (`XGFX_FLIP_WAIT`) and, with the GPU idle for 2 vblanks, puts the newest
+  finished frame on screen itself (`XGFX_FLIP_REPAIR`; the `[NV2A]` stats line
+  counts "flip waits (N repaired)": 3-21 per 600 frames in xemu). Found with a
+  display-order probe (test builds, `nv2a_vbl_probe` from `xhw_wait_vblank`):
+  before, the vblank showed the buffer being drawn every few seconds; after,
+  0 times through menus and flight. Maintainer: the flashing is gone.
+  Hardware must re-check (the race depends on interrupt/DPC latency).
+- Terrain pop-in at the screen edges on fast turns: the interpreter rejected
+  triangles beyond the N64 viewport (+-w), but the port draws past the
+  SUBSCREEN viewport to the screen edges (18 px at the bottom), so big
+  terrain triangles in that band vanished. Rejection is now at 1.2 w
+  (`XGFX_REJECT_RATIO`; found by a Fable consult). `patches/030` widens the
+  game's culling frustum by 1.25 (`WINGS64_CULL_WIDEN`) for the same band;
+  alone it did not fix the pop-in. Maintainer: pop-in fixed.
+- L + R + BACK + WHITE restarts the XBE (`pad.c`, `xhw_reboot_self`).
+- Test-build logging: `[GFX] thin frame` / `odd frame` (frames that drew next
+  to nothing / far less than the one before), `[NV2A] N frames with fewer
+  than 3 draws`.
+- Open: saves persist across a reboot (not checked); ThinLTO as the default;
+  texture churn (tens of MB uploaded per 600 frames in menus); the static-RAM
+  `_uvMediaCopy` sources in `save.c`/`task.c`; audio (M6); widescreen will
+  need `XGFX_REJECT_RATIO` and `WINGS64_CULL_WIDEN` to follow the aspect.
+
 ## M2 — the decomp compiles and links (2026-10-15)
 
 Branch: a worktree branch off `port` (M0); nothing pushed.

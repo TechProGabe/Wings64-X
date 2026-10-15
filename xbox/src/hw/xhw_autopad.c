@@ -7,7 +7,8 @@
  *
  *     <frame> <token>... [for <frames>]     # comment
  *
- * <frame> counts retraces (xhw_wait_vblank calls, [BEAT] "retrace"). A press
+ * <frame> counts presented frames ([BEAT] "presented"; not retraces, which run on
+ * while a screenshot stalls the game). A press
  * lasts 6 frames unless "for N" says otherwise. Tokens:
  *     A B X Y START BACK WHITE BLACK UP DOWN LEFT RIGHT   buttons (Duke names)
  *     L R                                                 triggers, fully in
@@ -252,7 +253,7 @@ void xhw_autopad_after_hang(void) {
 }
 
 void xhw_autopad_apply(int port, xhw_pad* out) {
-    unsigned f = xhw_frame_count();
+    unsigned f = xhw_present_count();   /* presented frames: a screenshot stalls the game, not this count */
     int i;
     if (port != 0) return;
     if (s_test_hang && f >= s_test_hang) {   /* the game thread stops for good */

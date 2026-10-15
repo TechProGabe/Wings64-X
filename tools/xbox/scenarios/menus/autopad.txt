@@ -1,0 +1,19 @@
+# menus: title -> file menu -> class/vehicle select -> pilot select -> test (M3/M4 smoke)
+# frames are presented frames (game frames); a press lasts 12
+500 A for 12      # skip the intro
+800 SHOT          # title menu
+900 A for 12      # Start game -> file menu
+1200 SHOT
+1300 START for 12 # -> vehicle & class select
+1600 SHOT
+1700 A for 12     # -> pilot select
+2000 SHOT
+2100 A for 12
+2400 SHOT
+2500 A for 12
+2800 SHOT
+2900 A for 12
+3200 SHOT
+3600 SHOT
+4200 SHOT
+4500 SHOT

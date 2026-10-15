@@ -44,6 +44,12 @@ void ocx_pb_layout(unsigned* out);  /* tools/xbox/patch_pbkit.py */
 #ifndef XGFX_OVERLAP
 #define XGFX_OVERLAP 1        /* the wait for the GPU is at the next frame's first use, not in the present */
 #endif
+#ifndef XGFX_FLIP_REPAIR
+#define XGFX_FLIP_REPAIR 1    /* 0: a flip pbkit lost leaves the screen on an older buffer until the 1 s cap */
+#endif
+#ifndef XGFX_FLIP_WAIT
+#define XGFX_FLIP_WAIT 1      /* 0: the old guard (4 vblanks at most, then draws on the shown buffer) */
+#endif
 #ifndef XGFX_PB_KICK
 #define XGFX_PB_KICK 8192     /* pushbuffer words per kick */
 #endif
@@ -278,7 +284,7 @@ static void pb_close(void) {
 }
 
 /* per-interval counters for the [NV2A] line */
-static uint32_t s_st_waits, s_st_tex_kb, s_st_verts, s_st_tex_fail, s_st_pb_peak, s_st_pb_resets, s_st_draws;
+static uint32_t s_st_flip_repairs, s_st_flip_waits, s_st_waits, s_st_tex_kb, s_st_verts, s_st_tex_fail, s_st_pb_peak, s_st_pb_resets, s_st_draws;
 static uint32_t s_frame, s_draws;
 
 static void report_gpu_stall(void) {
@@ -721,12 +727,51 @@ static void fps_overlay(void) {
 #define XHW_FBDUMP_EVERY 0
 #endif
 
+static void* s_last_fb;   /* the colour buffer presented last (xgfx_capture_last) */
+
+/* display-order probe (test builds): which presented frame each vblank shows */
+static volatile uint32_t s_buf_addr[3], s_buf_frame[3];
+static volatile int s_flip_waiting;   /* the present is waiting for the flip: nothing is drawn */
+
+static void probe_note_present(uint32_t addr, uint32_t frame) {
+    int i, slot = -1;
+    for (i = 0; i < 3 && slot < 0; i++)
+        if (s_buf_addr[i] == addr) slot = i;
+    for (i = 0; i < 3 && slot < 0; i++)
+        if (!s_buf_addr[i]) slot = i;
+    if (slot < 0) return;
+    s_buf_addr[slot] = addr;
+    s_buf_frame[slot] = frame;
+}
+
+void nv2a_vbl_probe(void) {
+    static uint32_t s_shown, s_logged;
+    uint32_t a = PCRTC_START_REG & 0x03FFFFFFu;
+    int i;
+    if (!XHW_TEST_BUILD) return;
+    if (s_frame_open && !s_flip_waiting && a == ((uint32_t)pb_back_buffer() & 0x03FFFFFFu) && s_logged < 60) {
+        s_logged++;
+        xhw_logf("[NV2A] vblank shows the buffer being drawn (frame %u)", s_frame);
+    }
+    for (i = 0; i < 3; i++)
+        if (s_buf_addr[i] == a) {
+            uint32_t f = s_buf_frame[i];
+            if (f < s_shown && s_logged < 60) {
+                s_logged++;
+                xhw_logf("[NV2A] display went back: frame %u shown after frame %u (now drawing %u)", f, s_shown, s_frame);
+            }
+            s_shown = f;
+            return;
+        }
+}
+
 void xgfx_present(void) {
     int shot;
     xgfx_frame_begin();
     pb_budget();
     if (s_fps_on) fps_overlay();
     shot = xhw_shot_take();
+    s_last_fb = pb_back_buffer();
     if (!XGFX_OVERLAP || shot || (XHW_FBDUMP_EVERY && (s_frame + 1) % XHW_FBDUMP_EVERY == 0)) wait_idle();
     if (shot == 2 || (XHW_FBDUMP_EVERY && (s_frame + 1) % XHW_FBDUMP_EVERY == 0))
         xhw_fbdump(fb_cpu(pb_back_buffer()), s_fbw, s_fbh, s_bpp, (int)pb_back_buffer_pitch());
@@ -738,9 +783,10 @@ void xgfx_present(void) {
     {
         /* never draw into the buffer being scanned out (OpenCrossing traps.md);
          * the waits depend on pbkit's vblank DPC, so they are timed */
-        int guard = 4, warned = 0;
+        int guard = 4, warned = 0, idle_vbls;
         uint64_t t0 = 0;
         pb_close();   /* pb_finished pushes the flip at pb_Put: close this frame's tail first (Melee-X v1 hang) */
+        probe_note_present((uint32_t)pb_back_buffer() & 0x03FFFFFFu, s_frame + 1);
         while (pb_finished()) {
             nv2a_irq_recover();
             if (!t0) t0 = xhw_time_ns();
@@ -750,23 +796,70 @@ void xgfx_present(void) {
                 warned = 1;
             }
         }
-        while (guard-- && (PCRTC_START_REG & 0x03FFFFFF) == ((uint32_t)pb_back_buffer() & 0x03FFFFFF)) {
+        /* The next back buffer stays on screen until the GPU has reached the
+         * flips queued before it, which can take several vblanks. The guard
+         * gave up after 4 tries, and the next frame's clear then drew on the
+         * picture being shown: whole-screen flashes in flight (xemu, display
+         * probe, 2026-10-15). It now waits until that buffer is really off
+         * screen; after 1 s it logs and goes on. */
+        t0 = 0;
+        warned = 0;
+        idle_vbls = 0;
+        s_flip_waiting = 1;
+        while ((PCRTC_START_REG & 0x03FFFFFF) == ((uint32_t)pb_back_buffer() & 0x03FFFFFF)) {
             DWORD vbl = pb_get_vbl_counter();
             int ms;
+            if (!XGFX_FLIP_WAIT && guard-- <= 0) break;
+            nv2a_irq_recover();
+            /* A lost flip: pbkit's DPC can retire a queued flip at a vblank
+             * its ISR did not see (the DPC ran late, with the vblank pending
+             * behind INTA_DISABLED), so PCRTC never moves: the GPU is idle,
+             * nothing is queued, and the screen keeps an older buffer, the
+             * one this frame would draw into (xemu, 2026-10-15: every 2-3 s).
+             * After two quiet vblanks the newest finished frame is put on
+             * screen here, right after a vblank. */
+            if (XGFX_FLIP_REPAIR && !gpu_busy() && ++idle_vbls > 2 && s_last_fb) {
+                PCRTC_START_REG = (uint32_t)(uintptr_t)s_last_fb & 0x03FFFFFFu;
+                s_st_flip_repairs++;
+                break;
+            }
+            if (!t0) t0 = xhw_time_ns();
+            else if (xhw_time_ns() - t0 > 1000000000ull) {
+                volatile const uint32_t* r = (volatile const uint32_t*)0xFD000000u;
+                xhw_logf("[NV2A] the back buffer stayed on screen for 1 s (vblank %u): busy %d quiet %d, crtc %08x back "
+                         "%08x, PMC intr %08x en %08x, PGRAPH intr %08x, PCRTC intr %08x en %08x",
+                         (unsigned)vbl, (int)gpu_busy(), gpu_quiet(), (unsigned)(PCRTC_START_REG & 0x03FFFFFF),
+                         (unsigned)((uint32_t)pb_back_buffer() & 0x03FFFFFF), (unsigned)r[0x100 / 4],
+                         (unsigned)r[0x140 / 4], (unsigned)r[0x400100 / 4], (unsigned)r[0x600100 / 4],
+                         (unsigned)r[0x600140 / 4]);
+                report_gpu_stall();
+                break;
+            }
             for (ms = 0; ms < 50 && pb_get_vbl_counter() == vbl; ms++) xhw_sleep_ms(1);
+            s_st_flip_waits++;
         }
     }
+    s_flip_waiting = 0;
     xhw_note_present();
+    {   /* frames that drew almost nothing: a black frame on screen */
+        static uint32_t s_thin, s_thin_logged;
+        if (s_draws < 3) s_thin++;
+        if (XHW_TEST_BUILD && s_thin != s_thin_logged && s_frame % 120 == 0) {
+            xhw_logf("[NV2A] %u frames with fewer than 3 draws so far (frame %u)", (unsigned)s_thin, s_frame);
+            s_thin_logged = s_thin;
+        }
+    }
     s_frame++;
     if (s_frame % XGFX_STATS_EVERY == 0) {
-        xhw_logf("[NV2A] frame %u: %u draws, tex pool %u KB free | per %u: %u idle waits, %u KB textures, %u pool "
+        xhw_logf("[NV2A] frame %u: %u draws, tex pool %u KB free | per %u: %u idle waits, %u flip waits (%u repaired), %u KB textures, %u pool "
                  "allocations failed, %u verts, %u draws, pushbuffer peak %u of %u KB (%u restarts), combiners "
                  "approximated %u",
-                 s_frame, s_draws, xgfx_tex_pool_free_kb(), XGFX_STATS_EVERY, s_st_waits, s_st_tex_kb, s_st_tex_fail,
+                 s_frame, s_draws, xgfx_tex_pool_free_kb(), XGFX_STATS_EVERY, s_st_waits, s_st_flip_waits, s_st_flip_repairs, s_st_tex_kb,
+                 s_st_tex_fail,
                  s_st_verts, s_st_draws, s_st_pb_peak / 1024, PB_BYTES / 1024, s_st_pb_resets,
                  (unsigned)xgfx_cc_approximated());
         nv2a_fault_log_ctx();
-        s_st_waits = s_st_tex_kb = s_st_verts = s_st_tex_fail = s_st_pb_peak = s_st_pb_resets = s_st_draws = 0;
+        s_st_flip_repairs = s_st_flip_waits = s_st_waits = s_st_tex_kb = s_st_verts = s_st_tex_fail = s_st_pb_peak = s_st_pb_resets = s_st_draws = 0;
     }
     s_draws = 0;
     s_frame_open = 0;
@@ -1092,6 +1185,42 @@ void xgfx_read_rect(int32_t x0, int32_t y0, int32_t w, int32_t h, uint32_t* argb
             }
         }
     }
+}
+
+uint32_t xgfx_capture_last(float* u_max, float* v_max) {
+    const uint8_t* fb;
+    uint32_t pitch, tw = 1, th = 1, tex, *buf;
+    int32_t step, cw, ch, x, y;
+    if (!s_last_fb) return 0;
+    xgfx_frame_begin();
+    wait_idle();
+    pb_open();
+    step = (s_fbw + 1023) / 1024;   /* 720p and 1080i: every other pixel (the texture limit is 1024) */
+    cw = s_fbw / step;
+    ch = s_fbh / step;
+    while (tw < (uint32_t)cw) tw <<= 1;
+    while (th < (uint32_t)ch) th <<= 1;
+    buf = (uint32_t*)calloc((size_t)tw * th, 4);
+    if (!buf) return 0;
+    fb = (const uint8_t*)fb_cpu(s_last_fb);
+    pitch = pb_back_buffer_pitch();
+    for (y = 0; y < ch; y++) {
+        const uint8_t* row = fb + (size_t)(y * step) * pitch;
+        uint32_t* out = buf + (size_t)y * tw;
+        for (x = 0; x < cw; x++) {
+            if (s_bpp == 16) {
+                uint32_t c = ((const uint16_t*)row)[x * step], r = c >> 11, g = (c >> 5) & 63, b = c & 31;
+                out[x] = 0xFF000000u | (r << 3 | r >> 2) << 16 | (g << 2 | g >> 4) << 8 | (b << 3 | b >> 2);
+            } else {
+                out[x] = ((const uint32_t*)row)[x * step] | 0xFF000000u;
+            }
+        }
+    }
+    tex = xgfx_tex_create(tw, th, buf);
+    free(buf);
+    *u_max = (float)cw / (float)tw;
+    *v_max = (float)ch / (float)th;
+    return tex;
 }
 
 /* ======================================================================

@@ -1,0 +1,32 @@
+--- a/src/kernel/code_7150.c
++++ b/src/kernel/code_7150.c
+@@ -4,6 +4,11 @@
+ #include <uv_vector.h>
+ #include "kernel/code_7150.h"
+ 
++#if defined(WINGS64_XBOX) && !defined(WINGS64_CULL_WIDEN)
++/* bottom band: (240 - 115) / 107 = 1.17 of the viewport's half height; the rest is margin */
++#define WINGS64_CULL_WIDEN 1.25f
++#endif
++
+ void func_802061A0(UnkStruct_80204D94* arg0) {
+     Vec3F* temp_s1;
+     f32 temp_fa0;
+@@ -19,6 +24,17 @@
+     temp_fa0 = (arg0->unk1EC / arg0->unk1F8) * arg0->unk1FC;
+     temp_ft4 = (arg0->unk1F0 / arg0->unk1F8) * arg0->unk1FC;
+     temp_ft5 = (arg0->unk1F4 / arg0->unk1F8) * arg0->unk1FC;
++#ifdef WINGS64_XBOX
++    /* DIVERGES: the port draws the 3D view out to the screen edges, past the
++     * SUBSCREEN viewport this frustum was built for (10..310 x 8..222 of
++     * 320x240), so the culling frustum (only; the projection is unchanged) is
++     * widened to cover the whole screen: objects and terrain no longer pop at
++     * the edges on fast turns. -DWINGS64_CULL_WIDEN=1.0f is the N64's. */
++    temp_fa1 *= WINGS64_CULL_WIDEN;
++    temp_fa0 *= WINGS64_CULL_WIDEN;
++    temp_ft4 *= WINGS64_CULL_WIDEN;
++    temp_ft5 *= WINGS64_CULL_WIDEN;
++#endif
+     arg0->unk208[0].x = temp_fa0;
+     arg0->unk208[0].y = arg0->unk1FC;
+     arg0->unk208[0].z = temp_ft4;

@@ -100,6 +100,11 @@ uint32_t xgfx_tex_pool_free_kb(void);
  * framebuffer rect (pixels) into argb (w x h, A8R8G8B8). Waits for the GPU. */
 void xgfx_read_rect(int32_t x0, int32_t y0, int32_t w, int32_t h, uint32_t* argb);
 
+/* The picture presented last as a texture (the frozen frame under the game's
+ * screen fades, patches/026): the picture fills u 0..u_max, v 0..v_max.
+ * 0 when there is none or the pool is full. Waits for the GPU. */
+uint32_t xgfx_capture_last(float* u_max, float* v_max);
+
 void xgfx_debug_dump(void);   /* debug: the back buffer now, as [FBDUMP] */
 
 /* Combiner coverage: modes the compiler had to approximate since boot. */

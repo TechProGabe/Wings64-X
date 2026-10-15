@@ -148,6 +148,7 @@ static volatile unsigned s_retrace, s_presents;
 #endif
 static volatile int s_pb_up;
 DWORD pb_wait_for_vbl(void);
+void nv2a_vbl_probe(void);   /* nv2a.c: display-order probe (test builds) */
 
 void xhw_video_pb_up(void) {
     VIDEO_MODE m = XVideoGetMode();
@@ -159,6 +160,7 @@ void xhw_wait_vblank(void) {
     static uint64_t next_us;
     if (s_pb_up) {
         pb_wait_for_vbl();
+        nv2a_vbl_probe();
     } else {
         uint64_t now = xhw_time_us();
         if (!next_us || now > next_us + 50000) next_us = now;   /* a hitch: don't catch up */

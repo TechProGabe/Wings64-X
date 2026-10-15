@@ -227,7 +227,7 @@ for diagnosis only.
   `%f`: route the game's few printfs through a float-aware `xsdk_vsnprintf` as
   Melee-X's `log.c` does).
 - `xbox/order.txt` (hot-function layout), ThinLTO and PGO are Melee-X machinery
-  to adopt in M8 only if the profile asks for it; the P3 has a 128 KB L2 and this
+  to adopt in M9 only if the profile asks for it; the P3 has a 128 KB L2 and this
   game is ~1/10 of Melee's code, so probably not.
 
 ### D4. Rendering: the Fast3D interpreter on the CPU, the RDP on the NV2A
@@ -288,7 +288,7 @@ Melee-X's `nv2a_vp.c` encoder generates it) and does everything the RDP did:
   of 640x480 (4:3), all of 1280x720 / 1920x1080 (16:9), or a pillarboxed 4:3 rect
   inside a 16:9 framebuffer when widescreen is Off. See §3.2 for 16:9.
 
-Phase B (M8, by profile only): move transform and lighting into a vertex program
+Phase B (M9, by profile only): move transform and lighting into a vertex program
 (the N64's lights and texgen fit the NV2A fixed-function model); native geometry
 baking at load (wings64-dc D4 phase B) is **not** planned: the NV2A is not the
 bottleneck for this game.
@@ -319,7 +319,7 @@ must run identically). Two more hazards from those ports: some BIOS/modchip
 firmware rewrites `rdtsc` (`0f 31`) into `int 2Eh` in titles on upgraded CPUs
 (OpenCrossing issue #3, `xbox_code_repair.c`): the clock code tolerates it by
 reading time through one function the repair step can verify, and nothing in a
-hot loop depends on rdtsc; and a faster CPU finishes the N64's 30 Hz tick early,
+hot loop depends on rdtsc; and a faster CPU finishes a game tick early,
 which only means more idle waiting at the retrace, never a faster game.
 
 The Xbox kernel is strictly priority-preemptive (unlike KOS v2.2.2's tick
@@ -342,14 +342,14 @@ time for audio tasks. Output: 22050 Hz 16-bit stereo into the AC97 pump (Melee-X
 command's exact arithmetic (reverb included), with sm64-port's `src/pc/mixer.c`
 (portable + SSE4.1 paths, unlicensed: read, don't copy) as a second reading;
 mupen64plus-rsp-hle is **not** a source (GPL). CPU cost estimate: 32 voices × 22050 Hz ADPCM + resample + envelope
-mix ≈ 3–5 % of the P3; measure in M5 (`[PERF] audio`).
+mix ≈ 3–5 % of the P3; measure in M6 (`[PERF] audio`).
 
 The AI model: `osAiSetNextBuffer`/`osAiGetLength` as wings64-dc's virtual DAC
 (the playing buffer only, deficit capped), `osAiSetFrequency(22050)` honoured by
 the pump's resampler. The DMA of samples from `audio_tbl` is a `memcpy` from the
 ROM image.
 
-Fallback (kill switch, M5 risk): wings64-dc's cut point (replace the alSyn voice
+Fallback (kill switch, M6 risk): wings64-dc's cut point (replace the alSyn voice
 API, `aica_synth.c` lineage) with a software voice mixer on the Xbox. Less exact
 (no reverb), but proven for this game.
 
@@ -510,7 +510,7 @@ onto the content rect; at 4:3 that is the whole framebuffer. For 16:9:
   to the full framebuffer: the interpreter knows these by size (a rect covering
   ≥ 300x220 of the 320x240 space) and by the DC port's list
   (`WINGS64_OVERLAY_FULL`, `WINGS64_TITLE_FIT` cases). Pillarbox bars are black.
-  First step in M6 is the centred box alone (no game-code change); the HUD
+  First step in M7 is the centred box alone (no game-code change); the HUD
   patches land in the same milestone once the box is right.
 - **Widescreen Off** at 720p/1080i: a 4:3 content rect centred in the 16:9
   framebuffer, no hor+. At 480 the dashboard's widescreen flag decides for Auto.
@@ -697,7 +697,36 @@ also run the smoke script, "console" means a real Xbox (480i on gold, HD on red)
   shots of the sea, horizon, landing target, shadows match the DC's confirmed
   hardware runs 8–11 (`kb/STATE.md`'s graphics-fix table is the checklist).
 
-### M5 — Audio
+### M5 — Real 60 fps
+- **Goal**: flight, menus and replays at a locked 60 fps with the game's physics,
+  timers and sound cues unchanged (maintainer decision 2026-10-15: visible
+  60 fps, not a doubled 30). The N64 game steps its simulation once per frame it
+  draws, so drawing twice as often needs the simulation told so.
+- **Files**: `patches/` + Birdman64's ~20 rate-decoupling patches (`pw64_rate.h`,
+  the per-vehicle files `birdman*`, `gyrocopter`, `hang_glider*`, `rocket_belt`,
+  `cannonball`, `skydiving`, `jumble_hopper`, camera, HUD timers; MIT) imported
+  one reason per patch, re-guarded, each with a `.md` that names what it scales;
+  `vi.c` (one gfx task per retrace instead of every other), `settings.c` (a
+  `fps_mode = 30|60` key and a Settings row "Frame rate", default 60, as the
+  escape hatch while the patches are validated), `-DXGFX_FDR_HASH` oracle wired
+  so the ROM's demo replays can be hashed at 30 and at 60.
+- **Depends on**: M4 (a mission to measure), M3.
+- **Risks / open**: first measure what the game already does: wings64-dc runs
+  flight at 45–51 fps with no rate patches and the maintainer did not report a
+  fast game, so part of the logic may already be time-based; the patches needed
+  may be fewer than Birdman64's. Replays recorded by the game (`fdr.c`) and the
+  ROM's demos assume the N64's step; at 60 they may diverge (Birdman64's notes
+  say how it handles them: read before porting). Audio cues and timers tied to
+  frame counts (`uvaSeqStop`, HUD countdowns) must be checked. Any drift →
+  `fps_mode = 30` is one row away, and the port still presents at 60 Hz.
+- **Verify**: xemu `rb_a` scenario at 30 and at 60: the same mission takes the
+  same wall time to the results screen (the in-game timer agrees with a stopwatch
+  within a frame), `[PERF]` shows one new display list per retrace, the demo
+  replays complete and their state hashes are stable run to run. Console: the
+  maintainer flies each vehicle at 60 and judges feel and speed against the
+  N64 or an emulator at 30; FPS counter reads 60 in flight.
+
+### M6 — Audio
 - **Goal**: music and SFX in menus and flight, no dropouts over 10 minutes, the
   AC97 healthy (`[AUDIO] AC97 polled` once per boot).
 - **Files**: `xbox/src/hw/asp_hle.c` (D6), `asp_hle.h`; `os_shim.c` AI (virtual
@@ -717,7 +746,7 @@ also run the smoke script, "console" means a real Xbox (480i on gold, HD on red)
   decision point: if `[PERF] audio` exceeds 8 % of a frame, enable the D6
   fallback mixer behind its switch and compare.
 
-### M6 — Video modes, widescreen, settings menu, safe fallback
+### M7 — Video modes, widescreen, settings menu, safe fallback
 - **Goal**: §3.2–3.4 complete: 480i/480p/720p/1080i within the dashboard's
   allowance, 16:9 hor+ with the HUD box, the in-game Settings panel, the FPS
   counter, the three fallbacks.
@@ -749,7 +778,7 @@ also run the smoke script, "console" means a real Xbox (480i on gold, HD on red)
   pack) → "720p -> 480i" shown in the menu and 480i at boot. BACK at boot on
   either console → 480i saved.
 
-### M7 — Full game parity
+### M8 — Full game parity
 - **Goal**: every vehicle and class (Hang Glider, Rocket Belt, Gyrocopter,
   Cannonball, Skydiving, Jumble Hopper, Birdman), every level, the photo album,
   replays, the credits; saves hold; fades, title fit and album frame right.
@@ -759,7 +788,7 @@ also run the smoke script, "console" means a real Xbox (480i on gold, HD on red)
   patch 026 (fade over frozen frame) — on the NV2A the previous frame is simply
   not cleared under a fade, so 026 may become a one-line DIVERGES; EEPROM
   interchange test with an emulator save.
-- **Depends on**: M4, M5.
+- **Depends on**: M4, M5, M6.
 - **Risks / open**: the Class A Gyrocopter overview hang the DC saw once (watch
   `hang.log`); `uv: RSP timeout` watchdog lines on long loads (harmless on DC);
   float determinism of replays on SSE vs the VR4300 (the `fdr.c` hash oracle:
@@ -769,20 +798,16 @@ also run the smoke script, "console" means a real Xbox (480i on gold, HD on red)
   the demo replays run through without divergence; a Project64 `.eep` loads and
   shows the same pilots.
 
-### M8 — Performance and hardening
-- **Goal**: presentation at a locked 60 Hz at every mode (menus and 2D at 60 fps;
-  flight at the game's own 30 Hz logic rate, every frame on time: maintainer
-  decision 2026-10-15, "present at 60, logic at 30"); a 2-hour burn-in at 720p
-  and at 480i with no crash, hang, leak or audio fault; the same behaviour on a
-  733 MHz console and on an upgraded CPU.
-  True 60 fps flight (Birdman64's ~20 rate-decoupling patches, MIT) is **not**
-  in this plan; it is the first candidate for a post-release milestone, since it
-  changes physics timing and invalidates the replay oracle until re-validated.
+### M9 — Performance and hardening
+- **Goal**: 60 fps held at every mode, 1080i included, with no missed retrace in
+  flight (M5 made 60 the game's rate; this milestone makes the console keep it);
+  a 2-hour burn-in at 720p and at 480i with no crash, hang, leak or audio fault;
+  the same behaviour on a 733 MHz console and on an upgraded CPU.
 - **Files**: `xhw_prof.c` + `prof_report.py` (sampling profiler), `[MEMB]`
   memory breakdown, `[BEAT]`; `order.txt`/ThinLTO/PGO only if the profile shows
   the interpreter or the game thread bound; `nv2a.c` state-diff and texture
   memo; Phase B vertex program if the CPU is the limit (unlikely).
-- **Depends on**: M7.
+- **Depends on**: M8.
 - **Risks / open**: 1080i fill rate; the AC97 pump under load; long-uptime
   leaks (Melee-X's SDL event queue lesson is already in `xhw_pad.c`).
 - **Verify**: `[PERF]` on the console per scene (no missed retrace in flight);
@@ -790,7 +815,7 @@ also run the smoke script, "console" means a real Xbox (480i on gold, HD on red)
   over two hours; if an upgraded-CPU console is available, one run there with
   `[CLOCK]` and `[PERF]` compared.
 
-### M9 — Release
+### M10 — Release
 - **Goal**: `Wings64-X-<tag>.zip` from the GitHub `build` workflow with a release
   tag: `Wings64-X/default.xbe`, `default.tbn`, `tools/make-xiso`, `README.md`,
   `LICENSE.md`; the link map attached.
@@ -803,7 +828,7 @@ also run the smoke script, "console" means a real Xbox (480i on gold, HD on red)
   (MIT) and the Melee-X-derived files, which the maintainer relicenses as their
   author (Melee-X's `xbox/` is GPL-3.0-or-later only because of melee-pc, none of
   which is used here; `LICENSE.md` must say so), `docs/` complete.
-- **Depends on**: M8.
+- **Depends on**: M9.
 - **Verify**: the workflow run's zip installs on both consoles from scratch and
   plays a mission; the README's steps were followed literally by the maintainer.
 
@@ -818,7 +843,7 @@ also run the smoke script, "console" means a real Xbox (480i on gold, HD on red)
 | H3 | RSP audio HLE exactness | 15 Acmd commands with fixed-point semantics; audible if wrong | Birdman64 `abi.rs` as the oracle, host tests per command, fallback voice mixer behind a switch |
 | H4 | libultra scheduler semantics on Xbox kernel threads | priority-preemptive but not identical; spin loops | distinct priorities, patches 022/023, coroutine shim fallback |
 | H5 | IDO-era UB on clang | crashes IDO hid | Birdman64/wings64-dc UB patch list, `-ftrivial-auto-var-init=zero`, `AVOID_UB`, `-fno-aggressive-loop-optimizations` |
-| H6 | Float determinism (replays, demos) | SSE single vs VR4300 single: same IEEE results if no FMA and no excess precision | `-mfpmath=sse -ffp-contract=off`, no `-ffast-math` in game TUs, the fdr hash oracle |
+| H6 | Float determinism (replays, demos), now also at 60 fps | SSE single vs VR4300 single: same IEEE results if no FMA and no excess precision; the rate patches change the step | `-mfpmath=sse -ffp-contract=off`, no `-ffast-math` in game TUs, the fdr hash oracle at 30 and 60, `fps_mode = 30` fallback |
 | H7 | 1080i | nxdk mode table, memory, fill rate, flicker | opt-in, Z16 retry chain, experimental until confirmed on red |
 | H8 | Safe fallback without TV feedback | the console can't see the TV | three nets: BACK at boot, init failure, 15-s confirmation with a pending file |
 | H9 | 16:9 correctness | 4:3 culling, 2D vs 3D split, full-screen 2D detection | hor+ at the projection, HUD box, Birdman64's patches as step 2, kill switches |
@@ -866,15 +891,15 @@ tools/xbox/ setup.sh docker/ msys/ compile_game.py fetch_decomp.sh xemu_run.sh f
 
 | question | decision | where it lands |
 |---|---|---|
-| Frame rate | **present at 60 Hz, game logic at 30 Hz**; no rate-decoupling patches now; true 60 fps flight is the first post-release candidate | M8, D5 |
+| Frame rate | **real 60 fps** with Birdman64's rate-decoupling patches, validated against the replay oracle; a 30/60 Settings row as the escape hatch (clarified 2026-10-15 after "present at 60, logic at 30" turned out to mean a doubled 30 fps picture) | M5, M9, D5 |
 | Button layout | the D8 table ("whatever makes sense") | D8, M3 |
-| 1080i in Auto | **yes**, Auto tops out at 1080i where the dashboard allows it | §3.2, M6 |
+| 1080i in Auto | **yes**, Auto tops out at 1080i where the dashboard allows it | §3.2, M7 |
 | J/E ROMs | **refused** with a clear card; no JP build planned | §3.1, M1 |
 | Memory | **64 MB enforced**: 128 MB consoles run as 64 MB, held at boot | D2, M0 |
-| CPU | **upgraded/overclocked CPUs must work**: time from the ACPI timer and the vblank, never an assumed 733 MHz; `[CLOCK]` logged | D5, M0, M8 |
-| Audio | **RSP audio HLE first**, the voice-mixer cut as the fallback switch | D6, M5 |
-| 16:9 HUD | **anchored to the 16:9 edges** with Birdman64's HUD patches, after the centred box works | §3.2, M6 |
-| Licence | **MIT** for the port's own code; Melee-X-derived files relicensed by their author | M9 |
+| CPU | **upgraded/overclocked CPUs must work**: time from the ACPI timer and the vblank, never an assumed 733 MHz; `[CLOCK]` logged | D5, M0, M9 |
+| Audio | **RSP audio HLE first**, the voice-mixer cut as the fallback switch | D6, M6 |
+| 16:9 HUD | **anchored to the 16:9 edges** with Birdman64's HUD patches, after the centred box works | §3.2, M7 |
+| Licence | **MIT** for the port's own code; Melee-X-derived files relicensed by their author | M10 |
 
 ### Defaults applied unless the maintainer objects
 

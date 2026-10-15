@@ -34,6 +34,9 @@
 #ifndef WINGS64_TITLE_COPYRIGHT
 #define WINGS64_TITLE_COPYRIGHT 0
 #endif
+#ifndef WINGS64_TITLE_TEXT_DROP
+#define WINGS64_TITLE_TEXT_DROP 6   /* the title rows moved down in their box, centred (0: the game's margins) */
+#endif
 #ifndef WINGS64_TITLE_MENU_BOTTOM
 #define WINGS64_TITLE_MENU_BOTTOM 40   /* the box's bottom edge, up from the screen's: clear of the copyright line's band (18..34) whether it is drawn or not (maintainer) */
 #endif

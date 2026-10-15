@@ -153,9 +153,15 @@ int wings64_settings_title_init(void) {
  * item's text at y + font height + 1 (y up from the screen's bottom) and the
  * game's box runs from 4 below the lowest row's top (its 76 for y 60) to 4
  * below the top row's (its 118): the same margins, measured from the
- * bottom edge the box is given. */
+ * bottom edge the box is given. With those margins the top row's letters
+ * stick 3 N64 px out of the box's top and leave ~10 px under the last row
+ * (font 6's cell is 17 high, its letters sit low in it); DIVERGES: the rows
+ * (and the cursor) are moved down WINGS64_TITLE_TEXT_DROP inside the
+ * unchanged box, centring them (maintainer; measured from an xemu draw
+ * trace of the title: box 344..422 px, letters 351..414 at 6; 0 = the
+ * game's margins). */
 int wings64_title_menu_y(void) {
-    return WINGS64_TITLE_MENU_BOTTOM - sTitleH + 4;
+    return WINGS64_TITLE_MENU_BOTTOM - sTitleH + 4 - WINGS64_TITLE_TEXT_DROP;
 }
 
 int wings64_title_box_bottom(void) {
@@ -163,7 +169,7 @@ int wings64_title_box_bottom(void) {
 }
 
 int wings64_title_box_top(int items) {
-    return wings64_title_menu_y() + items * (sTitleH + 1) + sTitleH - 4;
+    return wings64_title_menu_y() + WINGS64_TITLE_TEXT_DROP + items * (sTitleH + 1) + sTitleH - 4;
 }
 
 /* patches/036: the Option menu's "Port settings" item */

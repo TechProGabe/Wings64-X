@@ -226,9 +226,24 @@ for diagnosis only.
   over nxdk's pdclib (`stdint.h`, `stddef.h`, `math.h`; pdclib's printf has no
   `%f`: route the game's few printfs through a float-aware `xsdk_vsnprintf` as
   Melee-X's `log.c` does).
-- `xbox/order.txt` (hot-function layout), ThinLTO and PGO are Melee-X machinery
-  to adopt in M9 only if the profile asks for it; the P3 has a 128 KB L2 and this
-  game is ~1/10 of Melee's code, so probably not.
+- **ThinLTO is required** (maintainer decision 2026-10-15): the game-side code
+  (decomp + `xbox/src/game` + `xbox/src/gfx`) is compiled to bitcode with
+  `-flto=thin` and linked through Melee-X's `tools/xbox/thinlto_link.py`
+  (lld-link `-thinlto-index-only`, clang's ThinLTO backend per module with the
+  game triple's codegen flags, native objects linked as usual, so an order file
+  still applies). Knob `XBOX_LTO=1|0`: **on by default** for every build and
+  required for releases (`package_release.py` refuses a non-LTO build); `0` is
+  the kill switch for diagnosis. Platform code (nxdk triple) and nxdk's libraries
+  stay native. Import limit as Melee-X (`-import-instr-limit=10`, `XBOX_LTO_INDEX`
+  to change it). Rules that keep LTO honest: `-opt:noicf` (the game compares
+  function pointers), no `-ffast-math`, the same `-ffp-contract=off -mfpmath=sse`
+  in the backend as at compile time (float determinism, H6: the fdr hash oracle
+  must match LTO and non-LTO builds), and the replay hash and the host tests run
+  against the LTO build in CI. Introduced in M3 (once the game runs, so a
+  miscompile is visible), mandatory from M5 on.
+- `xbox/order.txt` (hot-function layout) and PGO are Melee-X machinery to adopt
+  in M9 only if the profile asks for it; the P3 has a 128 KB L2 and this game is
+  ~1/10 of Melee's code, so probably not.
 
 ### D4. Rendering: the Fast3D interpreter on the CPU, the RDP on the NV2A
 
@@ -675,7 +690,10 @@ also run the smoke script, "console" means a real Xbox (480i on gold, HD on red)
   present, GPU-fault dump), `nv2a_cc.c`, `nv2a_fog.c`; `xbox/src/sdk/`-style
   glue `vi.c` (frame pacing, retrace event) and `pad.c` (N64 mapping); host tests
   `test_texconv.py`, `test_cc.py`, `test_mio0.py`, `test_swap.py`; `settings.c`
-  (file only, no menu yet); `-DXGFX_BOOT_LEVEL` knob to skip menus.
+  (file only, no menu yet); `-DXGFX_BOOT_LEVEL` knob to skip menus;
+  ThinLTO (D3): `tools/xbox/thinlto_link.py` from Melee-X, `XBOX_LTO` in
+  `compile_game.py` and `xbox/CMakeLists.txt`, the title reached with LTO on and
+  off (same screenshots).
 - **Depends on**: M2.
 - **Risks / open**: the thread model (D5 fallback); combiner coverage (the 13
   modes enumerated from Birdman64's `gfx.md`; an unknown one logs and draws
@@ -818,7 +836,8 @@ also run the smoke script, "console" means a real Xbox (480i on gold, HD on red)
   a 2-hour burn-in at 720p and at 480i with no crash, hang, leak or audio fault;
   the same behaviour on a 733 MHz console and on an upgraded CPU.
 - **Files**: `xhw_prof.c` + `prof_report.py` (sampling profiler), `[MEMB]`
-  memory breakdown, `[BEAT]`; `order.txt`/ThinLTO/PGO only if the profile shows
+  memory breakdown, `[BEAT]`; LTO vs non-LTO `[PERF]` pair recorded (the LTO
+  build is the default; D3); `order.txt`/PGO only if the profile shows
   the interpreter or the game thread bound; `nv2a.c` state-diff and texture
   memo; Phase B vertex program if the CPU is the limit (unlikely).
 - **Depends on**: M8.
@@ -833,8 +852,8 @@ also run the smoke script, "console" means a real Xbox (480i on gold, HD on red)
 - **Goal**: `Wings64-X-<tag>.zip` from the GitHub `build` workflow with a release
   tag: `Wings64-X/default.xbe`, `default.tbn`, `tools/make-xiso`, `README.md`,
   `LICENSE.md`; the link map attached.
-- **Files**: `.github/workflows/build.yml` (release step), `tools/xbox/package_release.py`
-  (refuses `XBOX_CFLAGS` builds), `.github/release-notes.md`, `README.md`
+- **Files**: `.github/workflows/build.yml` (release step, `XBOX_LTO=1`), `tools/xbox/package_release.py`
+  (refuses `XBOX_CFLAGS` builds and non-LTO builds), `.github/release-notes.md`, `README.md`
   (install, ROM requirements, video, settings, controls, troubleshooting, in
   Melee-X's voice), `LICENSE.md`: the port's own code is **MIT** (maintainer decision
   2026-10-15); it lists the decomp (MIT), Birdman64-derived patches (MIT),
@@ -916,6 +935,7 @@ tools/xbox/ setup.sh docker/ msys/ compile_game.py fetch_decomp.sh xemu_run.sh f
 | Audio | **RSP audio HLE first**, the voice-mixer cut as the fallback switch | D6, M6 |
 | 16:9 HUD | **anchored to the 16:9 edges** with Birdman64's HUD patches, after the centred box works | §3.2, M7 |
 | Licence | **MIT** for the port's own code; Melee-X-derived files relicensed by their author | M10 |
+| LTO | **ThinLTO required**: on by default (`XBOX_LTO=1`), releases refuse a non-LTO build, `XBOX_LTO=0` only as the diagnosis kill switch (added 2026-10-15) | D3, M3, M5, M9, M10 |
 
 ### Defaults applied unless the maintainer objects
 

@@ -839,7 +839,7 @@ static void emit_combiners(const XgfxState* st) {
     uint32_t c0 = pack_rgba(st->prim), c1 = pack_rgba(st->env);
     int i;
     if (cp != s_cc_sent) {
-        put1(NV097_SET_COMBINER_CONTROL, (uint32_t)cp->nstages | (1u << 12) | (1u << 16));
+        put1(NV097_SET_COMBINER_CONTROL, CC_COMBINER_CONTROL(cp));
         for (i = 0; i < cp->nstages; i++) {
             put1(NV097_SET_COMBINER_COLOR_ICW + (uint32_t)i * 4, cp->cicw[i]);
             put1(NV097_SET_COMBINER_COLOR_OCW + (uint32_t)i * 4, cp->cocw[i]);
@@ -861,9 +861,10 @@ static void emit_combiners(const XgfxState* st) {
         s_fx[F_COMB_C0] = c0;
         s_fx[F_COMB_C1] = c1;
     }
-    {
+    {   /* oD1 = (LOD_FRACTION x3, PRIM_LOD_FRAC) / 255 (nv2a_cc.h) */
         float d1[4];
-        cc_extra_inputs(st->lod_frac, st->prim_lod_frac, st->k5, d1);
+        d1[0] = d1[1] = d1[2] = st->lod_frac * (1.0f / 255.0f);
+        d1[3] = st->prim_lod_frac * (1.0f / 255.0f);
         vp_const_d1(d1);
     }
 }

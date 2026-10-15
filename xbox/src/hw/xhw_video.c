@@ -136,8 +136,39 @@ void xhw_video_fallback_480(void) {
 /* ---- retrace and present counters ---- */
 static volatile unsigned s_retrace, s_presents;
 
+/* The retrace (the N64's VI interrupt, the game's frame clock). Once
+ * pbkit is up and the output runs at 60 Hz, pbkit's vblank: flips and
+ * retraces then line up. Otherwise (the boot before the renderer, a 50 Hz
+ * mode) 60.000 Hz from the ACPI timer, as Melee-X's vi.c paces: a 50 Hz
+ * console must not slow the game. XVideoWaitForVBlank is never used: it
+ * hooks the GPU interrupt and pb_init then fails (OpenCrossing). Kill
+ * switch -DXHW_VBLANK_PACE=0: always the ACPI pacer. */
+#ifndef XHW_VBLANK_PACE
+#define XHW_VBLANK_PACE 1
+#endif
+static volatile int s_pb_up;
+DWORD pb_wait_for_vbl(void);
+
+void xhw_video_pb_up(void) {
+    VIDEO_MODE m = XVideoGetMode();
+    s_pb_up = XHW_VBLANK_PACE && (m.refresh == 0 || m.refresh >= 59);
+    xhw_logf("[VIDEO] retrace from %s (refresh %d)", s_pb_up ? "the vblank" : "the ACPI timer at 60.000 Hz", m.refresh);
+}
+
 void xhw_wait_vblank(void) {
-    XVideoWaitForVBlank();
+    static uint64_t next_us;
+    if (s_pb_up) {
+        pb_wait_for_vbl();
+    } else {
+        uint64_t now = xhw_time_us();
+        if (!next_us || now > next_us + 50000) next_us = now;   /* a hitch: don't catch up */
+        next_us += 16667;
+        while (now + 1500 < next_us) {
+            Sleep(1);
+            now = xhw_time_us();
+        }
+        while (now < next_us) now = xhw_time_us();
+    }
     s_retrace++;
 }
 unsigned xhw_frame_count(void) { return s_retrace; }

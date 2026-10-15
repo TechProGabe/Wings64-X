@@ -386,6 +386,80 @@ int xhw_thread_start(void (*fn)(void*), void* arg, int priority, uint32_t stack_
 
 void xhw_thread_set_priority(int priority) { SetThreadPriority(GetCurrentThread(), priority); }
 
+/* ---- threads at absolute priority levels (the libultra shim) ----
+ * The process's base priority is 8; KeSetBasePriorityThread's increment
+ * reaches 1..15 (clamped there for a non-real-time process), and
+ * KeSetPriorityThread applies it now rather than at the next quantum. The
+ * thread itself records its KTHREAD at entry; a level set before that is
+ * applied there. */
+struct xhw_thread {
+    void (*fn)(void*);
+    void* arg;
+    volatile PKTHREAD kt;
+    volatile LONG level;
+};
+static DWORD s_self_tls = 0xFFFFFFFFu;
+
+static void apply_level(PKTHREAD kt, int level) {
+    if (level < 1) level = 1;
+    if (level > 14) level = 14;
+    KeSetBasePriorityThread(kt, level - 8);
+    KeSetPriorityThread(kt, level);
+}
+
+static void self_tls_init(void) {
+    if (s_self_tls == 0xFFFFFFFFu) s_self_tls = TlsAlloc();
+}
+
+static DWORD WINAPI spawn_entry(LPVOID p) {
+    xhw_thread* t = (xhw_thread*)p;
+    TlsSetValue(s_self_tls, t);
+    t->kt = KeGetCurrentThread();
+    apply_level(t->kt, (int)t->level);
+    xhw_crash_guard(t->fn, t->arg);
+    return 0;
+}
+
+xhw_thread* xhw_thread_spawn(void (*fn)(void*), void* arg, int level, uint32_t stack_bytes) {
+    xhw_thread* t = (xhw_thread*)calloc(1, sizeof *t);
+    HANDLE h;
+    if (!t) return NULL;
+    self_tls_init();
+    t->fn = fn;
+    t->arg = arg;
+    t->level = level;
+    h = CreateThread(NULL, stack_bytes ? stack_bytes : 64 * 1024, spawn_entry, t, 0, NULL);
+    if (!h) {
+        free(t);
+        return NULL;
+    }
+    CloseHandle(h);
+    return t;
+}
+
+void xhw_thread_set_level(xhw_thread* t, int level) {
+    if (!t) return;
+    InterlockedExchange(&t->level, level);
+    if (t->kt) apply_level(t->kt, level);
+}
+
+xhw_thread* xhw_thread_self(void) {
+    self_tls_init();
+    return (xhw_thread*)TlsGetValue(s_self_tls);
+}
+
+void xhw_thread_adopt_self(int level) {
+    xhw_thread* t;
+    self_tls_init();
+    if (TlsGetValue(s_self_tls)) return;
+    t = (xhw_thread*)calloc(1, sizeof *t);
+    if (!t) return;
+    t->kt = KeGetCurrentThread();
+    t->level = level;
+    TlsSetValue(s_self_tls, t);
+    apply_level(t->kt, level);
+}
+
 /* ======================================================================
  * Memory
  * ====================================================================== */

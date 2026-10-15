@@ -62,6 +62,15 @@ void xhw_tls_set(uint32_t slot, void* value);
 /* priority: -2 (lowest) .. +2 (highest), +15 time critical; relative to normal */
 int xhw_thread_start(void (*fn)(void*), void* arg, int priority, uint32_t stack_bytes);
 void xhw_thread_set_priority(int priority);   /* the calling thread */
+/* Threads at absolute kernel priority levels (base priority, 1..14; normal
+ * is 8, the watchdog runs at 15): the libultra shim maps N64 priorities
+ * onto these so the kernel's strict priority preemption orders them as the
+ * N64 did. The token stays valid for the program's life. */
+typedef struct xhw_thread xhw_thread;
+xhw_thread* xhw_thread_spawn(void (*fn)(void*), void* arg, int level, uint32_t stack_bytes);
+void xhw_thread_set_level(xhw_thread* t, int level);
+xhw_thread* xhw_thread_self(void);    /* NULL for a thread not made by xhw_thread_spawn */
+void xhw_thread_adopt_self(int level);   /* the calling thread becomes one (the boot thread) */
 
 /* ---- memory ---- */
 uint32_t xhw_mem_free_kb(void);

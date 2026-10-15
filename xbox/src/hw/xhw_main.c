@@ -167,8 +167,8 @@ static void main_body(void* arg) {
     xhw_logf("[BOOT] " XHW_TITLE " (" __DATE__ " " __TIME__ ")%s", XHW_TEST_BUILD ? " test build" : "");
     log_save_folder();
     read_image_range();
-    xhw_logf("[BOOT] image %08x-%08x %.*s", xhw_image_base, xhw_image_end, (int)XeImageFileName[0].Length,
-             XeImageFileName[0].Buffer);
+    xhw_logf("[BOOT] image %08x-%08x %.*s, stack %p", xhw_image_base, xhw_image_end, (int)XeImageFileName[0].Length,
+             XeImageFileName[0].Buffer, (void*)&arg);
     log_previous_exit();
     xhw_ram_lock64_log();
     xhw_watchdog_start();

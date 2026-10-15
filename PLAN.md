@@ -512,8 +512,19 @@ onto the content rect; at 4:3 that is the whole framebuffer. For 16:9:
   (`WINGS64_OVERLAY_FULL`, `WINGS64_TITLE_FIT` cases). Pillarbox bars are black.
   First step in M7 is the centred box alone (no game-code change); the HUD
   patches land in the same milestone once the box is right.
-- **Widescreen Off** at 720p/1080i: a 4:3 content rect centred in the 16:9
-  framebuffer, no hor+. At 480 the dashboard's widescreen flag decides for Auto.
+- **Widescreen is a user toggle** (maintainer 2026-10-15), never only the
+  dashboard's choice: the Settings row "Widescreen" has **On**, **Off** and
+  **Auto** (the dashboard's flag at 480; 16:9 at 720p/1080i), stored as
+  `widescreen = on|off|auto`. On at 480 renders 16:9 hor+ into the 640x480 frame
+  (anamorphic; a 16:9 TV set to "full" undoes the squeeze) even when the
+  dashboard says 4:3, as OpenCrossing offers; Off at 720p/1080i renders a 4:3
+  content rect centred in the 16:9 framebuffer with black bars, no hor+. Hold
+  BACK at boot forces Off for that boot and saves it.
+- **It applies at once, no restart**: the framebuffer and video mode do not
+  change, only the content rect, the projection widening and the 2D mapping,
+  which the interpreter reads per frame. So the toggle can be tried on the
+  title screen and seen immediately when the panel closes, and `[VIDEO]
+  widescreen on|off (auto: dashboard 16:9|4:3)` is logged on each change.
 - The menu shows the result ("Auto, 16:9") as OpenCrossing's does.
 
 Kill switches: `-DXGFX_HORPLUS=0` (16:9 as a plain stretch), `-DXGFX_HUD_BOX=0`
@@ -563,7 +574,7 @@ panel's Stereo/Mono row. BACK on the title opens the same panel. Rows:
 | row | values | applies |
 |---|---|---|
 | Video output | Auto, 480i, 480p, 720p, 1080i; shown as "Auto, 720p" / "480p -> 480i" when the dashboard disallows | restart (`*`) |
-| Widescreen | Auto, On, Off; shown as "Auto, 16:9" | restart (`*`) |
+| Widescreen | On, Off, Auto; shown as "Auto, 16:9" / "Auto, 4:3" | **at once** (content rect, hor+ and 2D mapping are per-frame state; §3.2) |
 | FPS counter | On, Off | at once (drawn in the HUD number font at the top, as the DC's) |
 | Screenshots (BACK) | On, Off | at once; row present in test builds only |
 | Stick dead zone | 0–60 %, steps of 5 | at once |
@@ -772,8 +783,11 @@ also run the smoke script, "console" means a real Xbox (480i on gold, HD on red)
 - **Verify**: xemu: EEPROM copies with the 480p/720p/1080i/widescreen flags
   (`eeprom_video.py` extended with 1080i), `env MX_VIDEO=` per scenario, shots
   at each mode; the panel scenario (`settings`: open, change rows, Save and
-  restart, reopened values). Console red (HDTV pack): each mode photographed;
-  hor+ shows more world with an undistorted HUD; set 1080i then press nothing →
+  restart, reopened values; a `widescreen` scenario toggles On/Off/Auto in the
+  panel and shots show 16:9 hor+ vs the 4:3 box without a restart). Console red
+  (HDTV pack): each mode photographed; hor+ shows more world with an undistorted
+  HUD; Widescreen Off at 720p gives centred 4:3 with black bars, and On at 480i
+  on gold (4:3 dashboard) gives the anamorphic frame; set 1080i then press nothing →
   480i after 15 s and `settings.ini` reads 480i; set 720p on gold (480i-only
   pack) → "720p -> 480i" shown in the menu and 480i at boot. BACK at boot on
   either console → 480i saved.
@@ -894,6 +908,7 @@ tools/xbox/ setup.sh docker/ msys/ compile_game.py fetch_decomp.sh xemu_run.sh f
 | Frame rate | **real 60 fps** with Birdman64's rate-decoupling patches, validated against the replay oracle; a 30/60 Settings row as the escape hatch (clarified 2026-10-15 after "present at 60, logic at 30" turned out to mean a doubled 30 fps picture) | M5, M9, D5 |
 | Button layout | the D8 table ("whatever makes sense") | D8, M3 |
 | 1080i in Auto | **yes**, Auto tops out at 1080i where the dashboard allows it | §3.2, M7 |
+| Widescreen | **a Settings toggle** (On / Off / Auto) at every output, applied at once without a restart; not left to the dashboard | §3.2, §3.4, M7 |
 | J/E ROMs | **refused** with a clear card; no JP build planned | §3.1, M1 |
 | Memory | **64 MB enforced**: 128 MB consoles run as 64 MB, held at boot | D2, M0 |
 | CPU | **upgraded/overclocked CPUs must work**: time from the ACPI timer and the vblank, never an assumed 733 MHz; `[CLOCK]` logged | D5, M0, M9 |

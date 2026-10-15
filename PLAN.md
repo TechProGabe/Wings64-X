@@ -241,9 +241,8 @@ for diagnosis only.
   must match LTO and non-LTO builds), and the replay hash and the host tests run
   against the LTO build in CI. Introduced in M3 (once the game runs, so a
   miscompile is visible), mandatory from M5 on.
-- `xbox/order.txt` (hot-function layout) and PGO are Melee-X machinery to adopt
-  in M9 only if the profile asks for it; the P3 has a 128 KB L2 and this game is
-  ~1/10 of Melee's code, so probably not.
+- `xbox/order.txt` (hot-function layout) and PGO are adopted as in Melee-X (D13):
+  PGO is a release default from M9, the order file once profiler runs exist.
 
 ### D4. Rendering: the Fast3D interpreter on the CPU, the RDP on the NV2A
 
@@ -437,6 +436,38 @@ patch), `docs/renderer.md`, `docs/platform.md`, `docs/testing.md` (switch table)
 `docs/toolchain.md`, `docs/architecture.md` (memory budget), `docs/rom.md`
 (validation, provenance, never commit). Same shape as Melee-X so an agent moving
 between the ports finds things where it expects them.
+
+### D13. Performance machinery carried over from Melee-X
+
+Maintainer decision 2026-10-15: every Melee-X optimisation that applies to this
+port is adopted, each with its kill switch and the good build as the default.
+Melee-X's measured results (its `docs/fps-plan.md`, console rounds) are quoted so
+the reason for each is on record; "n/a" items are GX- or Melee-specific.
+
+| item (Melee-X switch) | Melee-X result | Wings64-X | when | default / kill switch |
+|---|---|---|---|---|
+| ThinLTO (`XBOX_LTO`, `thinlto_link.py`) | +3.5 % fps | game-side code (decomp + `src/game` + `src/gfx`) as bitcode; D3 | M3 | on; `XBOX_LTO=0` |
+| PGO (`XBOX_PGO=gen\|<profdata>`, `xhw_pgo.c`, `pgo_raw.py`, `pgo_train.sh`, `docs/pgo.md`) | with LTO +11.6-13 % fps | instrumented build dumps `[PGOC]` at scene exits; trained on the xemu scenarios (title, `rb_a`, a demo replay); `xbox/wings64.profdata` committed (counters only, no game data: Melee-X's `pgo.md` "Why it can be committed"); retrain after game-side changes; the fdr hash oracle must match PGO and plain builds | M9 (machinery M5) | releases on; plain builds without |
+| `-fno-auto-import` (game triple) | `.refptr` stubs 363 → 1 | in the game flag set | M2 | always |
+| `-ffunction-sections` + `xbox/order.txt` (`make_order.py`, `coff_text_plain.py`) | 0 with LTO+PGO, +0.9 % without | hot-first layout from profiler runs; cheap, so adopted | M9 | on when `order.txt` exists |
+| `xhw_string.c` (`rep movs/stos` mem*) + `xbuiltin.h` (constant-size mem* and `sqrtf` inline) | mem* were ~40 % of a frame before | copied in M0; `xbuiltin.h` force-included in game units too | M0/M2 | always (`XBUILTIN_OFF` per file) |
+| CPU/GPU overlap (`XGX_OVERLAP`) | GPU drawing overlaps the next tick | present queues the flip; the wait for idle is at the next frame's first GPU use | M3 | on; `-DXGFX_OVERLAP=0` |
+| Pushbuffer 1 MB, kick every 8192 words, `BREAK_VERTEX_BUFFER_CACHE` per batch, robust `wait_idle` (CACHE1 empty twice) | hangs/stale vertices fixed on hardware | as is | M3 | `-DXGFX_PB_KICK`, `-DXGFX_VB_CACHE_BREAK=0` |
+| Vertex ring + 32768-vertex windows (indices < 0x10000 on the console) | PGRAPH data errors fixed | as is | M3 | always |
+| Fewer, bigger draws (merging consecutive batches of one state) | a draw costs ~31 µs on the console | the interpreter batches triangles per draw state; state epochs (wings64-dc `WINGS64_STATE_SKIP`) decide when a new draw is needed | M3 | `-DXGFX_BATCH=0` (one draw per triangle, diagnosis) |
+| Redundant-state filtering (shadow registers, `SETF`), texture-unit memo, combiner-program cache | back end CPU cost down | the same for the N64 state: combiner cache keyed by (cc0, cc1, cycle, fog) (wings64-dc `WINGS64_CC_CACHE`), per-frame texture memo (`WINGS64_TEX_MEMO`), rect colour memo (`WINGS64_RECT_FIT`) | M3/M4 | on; each with its switch |
+| Texture pool (first fit, big/small split, hashed blocks), deferred frees, overflow pool (`xgx_tex_pool_grow`) | Trophy-room thrash fixed | as is; texture cache keyed by (RAM address, tile key, sampled hash), wiped on level load | M3 | `-DXGFX_TEX_POOL_KB` |
+| Swizzle into a cached scratch buffer, then one in-order copy to write-combined memory | write combining kept | as is | M3 | always |
+| Tile regions (`XGX_TILE=4`: pbkit's tile 0 enable bit) | +11 % (one bit) | as is; CPU reads of the framebuffer through the NV2A aperture (`fb_cpu`) | M3 | `-DXGFX_TILE` |
+| One DMA object for colour and depth (`XGX_ONE_DMA`), context keep (`XGX_CTX_KEEP`), zeta-pitch guard at 720p/1080i (`XGX_ZETA_GUARD`), Z24S8 with 16-bit colour (`XGX_Z24_16BPP`) | 720p GPU stalls fixed | as is (also needed for any render-to-texture: album, fades) | M3/M7 | on; each with its switch |
+| Audio mixer in SSE1 with a plain-C build (`PC_AUDIO_SCALAR`) | mixer instructions ~halved, same bits | `asp_hle.c`'s ADPCM/resample/envmixer inner loops in SSE1 (no SSE2 on the P3), host test builds both | M6/M9 | on; `-DASP_SCALAR` |
+| Sampling profiler (`xhw_prof.c`, `prof_report.py`, `sym.py`), `[PERF]` buckets (`xhw_perf.c`), `[GPUP]`, PMC probe with ablation windows (`xhw_pmc.c`, `probe_report.py`), lockstep (`MX_LOCKSTEP`), console rounds (`console_round.py`) | how every win above was found and priced | ported: buckets become interpreter / back end / texture / GPU wait / audio HLE / game logic / vsync | M4 (`[PERF]`), M9 (the rest) | test builds only (`-DXHW_PROF=1`, `-DXHW_PMC=1`) |
+| MXCSR flush-to-zero, 4 MB pages, prefetch, deferred back end | no gain on the console | not adopted (Melee-X's closed list) | — | — |
+| `disc_lower`, display-list vertex cache, vertex-program generator and program memory, indirect texturing, EFB-copy GPU path, Z16 depth remap | n/a (GX/HSD) | not needed: Fast3D is interpreted on the CPU with a fixed pass-through vertex program; readbacks are CPU reads | — | — |
+
+Melee-X's lessons are binding for M9: measure on the console (xemu misranks
+costs), warm-up run first, repeat anything under ~3 %, check whether the GPU sets
+the pace before chasing CPU time, retrain PGO after game changes.
 
 ---
 
@@ -837,8 +868,8 @@ also run the smoke script, "console" means a real Xbox (480i on gold, HD on red)
   the same behaviour on a 733 MHz console and on an upgraded CPU.
 - **Files**: `xhw_prof.c` + `prof_report.py` (sampling profiler), `[MEMB]`
   memory breakdown, `[BEAT]`; LTO vs non-LTO `[PERF]` pair recorded (the LTO
-  build is the default; D3); `order.txt`/PGO only if the profile shows
-  the interpreter or the game thread bound; `nv2a.c` state-diff and texture
+  build is the default; D3); PGO trained and committed, `order.txt` from
+  profiler runs (D13); `nv2a.c` state-diff and texture
   memo; Phase B vertex program if the CPU is the limit (unlikely).
 - **Depends on**: M8.
 - **Risks / open**: 1080i fill rate; the AC97 pump under load; long-uptime
@@ -935,6 +966,7 @@ tools/xbox/ setup.sh docker/ msys/ compile_game.py fetch_decomp.sh xemu_run.sh f
 | Audio | **RSP audio HLE first**, the voice-mixer cut as the fallback switch | D6, M6 |
 | 16:9 HUD | **anchored to the 16:9 edges** with Birdman64's HUD patches, after the centred box works | §3.2, M7 |
 | Licence | **MIT** for the port's own code; Melee-X-derived files relicensed by their author | M10 |
+| Melee-X optimisations | **all that apply are adopted**, each with a kill switch (D13; added 2026-10-15) | D13, M3-M9 |
 | LTO | **ThinLTO required**: on by default (`XBOX_LTO=1`), releases refuse a non-LTO build, `XBOX_LTO=0` only as the diagnosis kill switch (added 2026-10-15) | D3, M3, M5, M9, M10 |
 
 ### Defaults applied unless the maintainer objects

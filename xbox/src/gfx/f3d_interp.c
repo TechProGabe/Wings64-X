@@ -84,7 +84,16 @@ typedef struct {
     uint16_t uls, ult, lrs, lrt;   /* 10.2 */
 } Tile;
 
-typedef struct { uint32_t addr; uint32_t bytes; uint16_t dxt; uint8_t valid; } TmemLoad;
+/* What TMEM holds at a tile's address: a LOADBLOCK (a run of bytes, odd
+ * rows swapped unless dxt says otherwise) or a LOADTILE (a rectangle of the
+ * texture image: `rows` rows of `row_bytes` at `stride`, unswapped as
+ * sampled). */
+typedef struct {
+    uint32_t addr, bytes;
+    uint16_t dxt;
+    uint8_t valid, tile;
+    uint16_t rows, row_bytes, stride;
+} TmemLoad;
 
 static struct {
     uint32_t seg[16];
@@ -311,9 +320,40 @@ static float s_sc[4];            /* the clip rectangle when s_sc_on, N64 pixels 
 static XgfxVtx s_batch[BATCH_TRIS * 3];
 static uint32_t s_nb;
 
+static int s_trace;   /* -DXGFX_TRACE_FRAME=<n>: frame n's draws as [DRAW] lines */
+#ifndef XGFX_TRACE_FRAME
+#define XGFX_TRACE_FRAME 0
+#endif
+
 static void flush(void) {
     if (!s_nb) return;
+    if (s_trace) {
+        uint32_t i;
+        float zlo = 2e9f, zhi = -2e9f;
+        for (i = 0; i < s_nb * 3; i++) {
+            if (s_batch[i].z < zlo) zlo = s_batch[i].z;
+            if (s_batch[i].z > zhi) zhi = s_batch[i].z;
+        }
+        xhw_logf("[DRAW] z %d..%d (x1000)", (int)(zlo * 1000.0f / s_out.zmax), (int)(zhi * 1000.0f / s_out.zmax));
+    }
+    if (s_trace)
+        xhw_logf("[DRAW] %u tris cc %06x:%08x cyc %u tex %u/%u blend %u aref %u depth %u/%u bias %u sten %u fog %u "
+                 "prim %02x%02x%02x%02x env %02x%02x%02x%02x geom %06x oml %08x v0 %d,%d z %d a %u",
+                 (unsigned)s_nb, (unsigned)s_st.cc0, (unsigned)s_st.cc1, (unsigned)s_st.two_cycle + 1,
+                 (unsigned)s_st.tex[0], (unsigned)s_st.tex[1], (unsigned)s_st.blend, (unsigned)s_st.alpha_ref,
+                 (unsigned)s_st.depth_func, (unsigned)s_st.depth_write, (unsigned)s_st.depth_bias,
+                 (unsigned)s_st.stencil, (unsigned)s_st.fog, s_st.prim[0], s_st.prim[1], s_st.prim[2], s_st.prim[3],
+                 s_st.env[0], s_st.env[1], s_st.env[2], s_st.env[3], (unsigned)R.geom, (unsigned)R.oml,
+                 (int)s_batch[0].x, (int)s_batch[0].y, (int)(s_batch[0].z * 1000.0f / s_out.zmax), s_batch[0].rgba[3]);
     xgfx_draw(&s_st, s_batch, s_nb);
+    if (s_trace) {   /* the first draw nearer than 0.9: everything far is down by now */
+        static int dumped;
+        if (!dumped && s_batch[0].z < 0.9f * s_out.zmax && s_st.depth_func != XGFX_DEPTH_OFF) {
+            dumped = 1;
+            xhw_log("[DRAW] dump before this draw's effect (the far scene)");
+            xgfx_debug_dump();
+        }
+    }
     s_nb = 0;
 }
 
@@ -358,6 +398,8 @@ static TexEntry* tex_evict_slot(unsigned slot) {
 static struct { uint32_t frame, addr, key; TexEntry* e; } s_memo[MEMO];
 #endif
 
+static void tex_miss(const char* why, int tidx);
+
 /* The texture tile `tidx` samples: converted, padded to powers of two,
  * uploaded once and cached. NULL when it can't be made. */
 static TexEntry* texture_for_tile(int tidx) {
@@ -370,14 +412,14 @@ static TexEntry* texture_for_tile(int tidx) {
     unsigned line = t->line * 8u * (t->siz == 3 ? 2u : 1u), bytes, pw, ph, slot, i;
     uint32_t key, sample;
     TexEntry* e;
-    if (!ld->valid || t->line == 0) return NULL;
+    if (!ld->valid || t->line == 0) { tex_miss("no load", tidx); return NULL; }
     if (t->masks && (1u << t->masks) < w) w = 1u << t->masks;
     if (t->maskt && (1u << t->maskt) < h) h = 1u << t->maskt;
     /* tiles may declare more rows than were loaded (UVBT, fonts): only loaded rows exist */
     if (h > ld->bytes / line) h = ld->bytes / line;
-    if (w == 0 || h == 0 || w > 1024 || h > 1024) return NULL;
+    if (w == 0 || h == 0 || w > 1024 || h > 1024) { tex_miss("size", tidx); return NULL; }
     bytes = line * h;
-    if (bytes > sizeof raw) return NULL;
+    if (bytes > sizeof raw) { tex_miss("too big", tidx); return NULL; }
     key = t->fmt | t->siz << 3 | (w - 1) << 5 | (h - 1) << 15 | (uint32_t)(line & 0xFF) << 24 | (uint32_t)(ld->dxt != 0) << 31;
 #if XGFX_TEX_MEMO
     {
@@ -387,7 +429,8 @@ static TexEntry* texture_for_tile(int tidx) {
             return s_memo[m].e;
     }
 #endif
-    sample = sample_hash((const uint8_t*)ram(ld->addr), bytes);
+    sample = sample_hash((const uint8_t*)ram(ld->addr), ld->tile ? ld->row_bytes : bytes) ^
+             (ld->tile ? sample_hash((const uint8_t*)ram(ld->addr) + (ld->rows - 1u) * ld->stride, ld->row_bytes) : 0);
     slot = ((ld->addr >> 3) * 2654435761u ^ key * 40503u) % TEX_CACHE;
     for (i = 0; i < 8; i++) {   /* 8-way probe */
         e = &s_texc[(slot + i) % TEX_CACHE];
@@ -402,22 +445,33 @@ static TexEntry* texture_for_tile(int tidx) {
         }
         e = tex_evict_slot(pick);
     }
-    memcpy(raw, ram(ld->addr), (bytes + 7) & ~7u);
-    if (ld->dxt == 0) texconv_deswizzle(raw, line, bytes / line);   /* stored in TMEM order */
+    if (ld->tile) {   /* LOADTILE: the rectangle's rows, laid out at the tile's line */
+        const uint8_t* src = (const uint8_t*)ram(ld->addr);
+        unsigned r, n = ld->row_bytes < line ? ld->row_bytes : line;
+        memset(raw, 0, bytes);
+        for (r = 0; r < h && r < ld->rows; r++) memcpy(raw + r * line, src + r * ld->stride, n);
+    } else {
+        memcpy(raw, ram(ld->addr), (bytes + 7) & ~7u);
+    }
+    if (ld->tile) {
+    } else if (ld->dxt == 0) texconv_deswizzle(raw, line, bytes / line);   /* stored in TMEM order */
 #if XGFX_DXT_EXACT
     else if (t->siz != 3 && (uint32_t)ld->dxt * (line / 8) != 2048u)
         texconv_deswizzle_dxt(raw, line, bytes / line, ld->dxt);
 #endif
     pw = texconv_pow2(w);
     ph = texconv_pow2(h);
-    if (pw * ph > sizeof conv / 4) return NULL;
-    if (!texconv_to_argb8(raw, line, w, h, (n64_fmt_t)t->fmt, (n64_siz_t)t->siz, conv, pw, ph)) return NULL;
+    if (pw * ph > sizeof conv / 4) { tex_miss("too big", tidx); return NULL; }
+    if (!texconv_to_argb8(raw, line, w, h, (n64_fmt_t)t->fmt, (n64_siz_t)t->siz, conv, pw, ph)) {
+        tex_miss("format", tidx);
+        return NULL;
+    }
     e->handle = xgfx_tex_create(pw, ph, conv);
     if (!e->handle) {   /* pool full: drop everything not used this frame and try once more */
         for (i = 0; i < TEX_CACHE; i++)
             if (s_texc[i].handle && s_texc[i].frame != s_frame_no && &s_texc[i] != e) tex_evict_slot(i);
         e->handle = xgfx_tex_create(pw, ph, conv);
-        if (!e->handle) return NULL;
+        if (!e->handle) { tex_miss("pool full", tidx); return NULL; }
     }
     e->addr = ld->addr;
     e->key = key;
@@ -438,6 +492,18 @@ hit:
     }
 #endif
     return e;
+}
+
+/* the first misses of each kind, for the log */
+static void tex_miss(const char* why, int tidx) {
+    static unsigned s_n;
+    const Tile* t = &R.tile[tidx & 7];
+    const TmemLoad* ld = &R.loads[(t->tmem >> 3) & 63];
+    if (s_n++ >= 48) return;
+    xhw_logf("[GFX] texture miss (%s): tile %d fmt %d siz %d line %d tmem %d s %d-%d t %d-%d mask %d/%d | load %d "
+             "addr %08x bytes %u dxt %d",
+             why, tidx, t->fmt, t->siz, t->line, t->tmem, t->uls >> 2, t->lrs >> 2, t->ult >> 2, t->lrt >> 2, t->masks,
+             t->maskt, ld->valid, (unsigned)ld->addr, (unsigned)ld->bytes, ld->dxt);
 }
 
 static float shift_scale(int sh) {
@@ -494,6 +560,10 @@ static void pixel_state(int depth_override_always) {
     s_st.depth_func = zb && (rm & F3D_Z_CMP) ? XGFX_DEPTH_LEQUAL : (zb && (rm & F3D_Z_UPD)) ? XGFX_DEPTH_ALWAYS
                                                                                               : XGFX_DEPTH_OFF;
     s_st.depth_write = zb && (rm & F3D_Z_UPD);
+#ifdef XGFX_DEBUG_NOZ
+    s_st.depth_func = XGFX_DEPTH_OFF;
+    s_st.depth_write = 0;
+#endif
     s_decal = ((rm >> 10) & 3) == 3;
     s_st.depth_bias = 0;
     if (s_st.depth_func == XGFX_DEPTH_LEQUAL) {
@@ -588,6 +658,9 @@ static void to_out(const Vtx* v, XgfxVtx* o, const Vtx* flat) {
     o->x = (R.vp_tx + v->x * iw * R.vp_sx) * s_sx + s_ox;
     o->y = (R.vp_ty - v->y * iw * R.vp_sy) * s_sy + s_oy;
     o->z = (z01 < 0.0f ? 0.0f : z01 > 1.0f ? 1.0f : z01) * s_out.zmax;
+#ifdef XGFX_DEBUG_ZHALF
+    o->z *= 0.5f;
+#endif
     o->w = v->w;
     o->rgba[0] = to8(c->r);
     o->rgba[1] = to8(c->g);
@@ -691,21 +764,25 @@ static void clip_tri(Vtx* const v[3], const Vtx* flat) {
     emit_poly(in, n, flat);
 }
 
+static uint32_t s_t_in, s_t_rej, s_t_cull, s_t_clip, s_t_shadow, s_vtx_loads, s_mtx_loads;
+
 static void do_tri(int ia, int ib, int ic, int flag) {
     Vtx* v[3] = { &R.vc[ia], &R.vc[ib], &R.vc[ic] };
     const Vtx* flat = (R.geom & F3D_G_SHADING_SMOOTH) ? NULL : v[flag < 3 ? flag : 0];
     int needs_clip;
     if (R.cimg == R.zimg && R.cimg && !XGFX_SHADOW_VOL) return;
     if (s_shadow_pass2 && !XGFX_SHADOW_VOL) return;
-    if (v[0]->oc & v[1]->oc & v[2]->oc & (31 | 64)) return;   /* all beyond one plane */
+    s_t_in++;
+    if (v[0]->oc & v[1]->oc & v[2]->oc & (31 | 64)) { s_t_rej++; return; }   /* all beyond one plane */
     needs_clip = ((v[0]->oc | v[1]->oc | v[2]->oc) & 32) != 0;
     if ((R.geom & (F3D_G_CULL_FRONT | F3D_G_CULL_BACK)) && !needs_clip) {
         float det = v[0]->x * (v[1]->y * v[2]->w - v[2]->y * v[1]->w) - v[0]->y * (v[1]->x * v[2]->w - v[2]->x * v[1]->w) +
                     v[0]->w * (v[1]->x * v[2]->y - v[2]->x * v[1]->y);
         float cross = -det;
-        if ((R.geom & F3D_G_CULL_BACK) && cross >= 0.0f) return;
-        if ((R.geom & F3D_G_CULL_FRONT) && cross <= 0.0f) return;
+        if ((R.geom & F3D_G_CULL_BACK) && cross >= 0.0f) { s_t_cull++; return; }
+        if ((R.geom & F3D_G_CULL_FRONT) && cross <= 0.0f) { s_t_cull++; return; }
     }
+    if (needs_clip) s_t_clip++;
     if (s_st_epoch != s_epoch) draw_state();
     if (!needs_clip) {
         Vtx tri[3] = { *v[0], *v[1], *v[2] };
@@ -787,6 +864,7 @@ static void do_fillrect(uint32_t w0, uint32_t w1) {
     if (R.cimg == R.zimg && R.cimg) {   /* z-buffer clear (Birdman64 gfx.md) */
         float x0 = ulx, y0 = uly, x1 = lrx, y1 = lry;
         flush();
+        if (s_trace) xhw_logf("[DRAW] z clear %d,%d-%d,%d fill %08x", ulx, uly, lrx, lry, (unsigned)R.fill);
         if (x0 <= SUB_X0 && x1 >= SUB_X1 && y0 <= SUB_Y0 && y1 >= SUB_Y1) {   /* SUBSCREEN-sized: the whole picture */
             xgfx_clear((int32_t)s_cx, (int32_t)s_cy, (int32_t)(s_cx + s_cw), (int32_t)(s_cy + s_ch), 0, 0, 1, 1.0f);
         } else {
@@ -822,6 +900,8 @@ static void do_fillrect(uint32_t w0, uint32_t w1) {
         lrx = 320;
         lry = 240;
     }
+    if (s_trace) xhw_logf("[DRAW] fillrect %d,%d-%d,%d cyc %d cimg %08x zimg %08x", ulx, uly, lrx, lry, cycle,
+                          (unsigned)R.cimg, (unsigned)R.zimg);
     screen_quad(ulx, uly, lrx, lry, 0, 0, 0, 0);
     flush();
     DIRTY();
@@ -910,11 +990,11 @@ static void run_dl(const uint32_t* pc) {
                 break;
         }
         switch (w0 >> 24) {
-            case F3D_G_MTX: do_mtx(w0, w1); break;
+            case F3D_G_MTX: s_mtx_loads++; do_mtx(w0, w1); break;
             case F3D_G_POPMTX:
                 if (R.mv_top > 0) { R.mv_top--; R.mvp_dirty = 1; }
                 break;
-            case F3D_G_VTX: do_vtx(w0, w1); break;
+            case F3D_G_VTX: s_vtx_loads++; do_vtx(w0, w1); break;
             case F3D_G_TRI1: {
                 uint8_t a, b, c, f;
                 f3d_tri1_decode(w1, &a, &b, &c, &f);
@@ -1040,7 +1120,28 @@ static void run_dl(const uint32_t* pc) {
                 ld->bytes = (lrs + 1u) * bpt;
                 ld->dxt = dxt;
                 ld->valid = 1;
+                ld->tile = 0;
                 if (R.timg_siz == 0) ld->bytes = (lrs + 2u) / 2;
+                break;
+            }
+            case F3D_G_LOADTILE: {
+                uint8_t tile;
+                uint16_t uls, ult, lrs, lrt;
+                TmemLoad* ld;
+                unsigned x0, y0, x1, y1, bpp2;   /* bpp2: bytes per texel x 2 */
+                f3d_loadtile_decode(w0, w1, &tile, &uls, &ult, &lrs, &lrt);
+                ld = &R.loads[(R.tile[tile & 7].tmem >> 3) & 63];
+                bpp2 = R.timg_siz == 3 ? 8 : R.timg_siz == 2 ? 4 : R.timg_siz == 1 ? 2 : 1;
+                x0 = uls >> 2; y0 = ult >> 2; x1 = lrs >> 2; y1 = lrt >> 2;
+                if (x1 < x0 || y1 < y0) break;
+                ld->addr = R.timg_addr + (y0 * R.timg_w + x0) * bpp2 / 2;
+                ld->row_bytes = (uint16_t)(((x1 - x0 + 1) * bpp2 + 1) / 2);
+                ld->stride = (uint16_t)(R.timg_w * bpp2 / 2);
+                ld->rows = (uint16_t)(y1 - y0 + 1);
+                ld->bytes = ld->rows * R.tile[tile & 7].line * 8u;
+                ld->dxt = 0;
+                ld->tile = 1;
+                ld->valid = 1;
                 break;
             }
             case F3D_G_SETCOMBINE: R.cc0 = w0; R.cc1 = w1; break;
@@ -1119,6 +1220,7 @@ void f3d_run(const void* dl) {
     s_scissor[0] = s_scissor[1] = 0.0f; s_scissor[2] = N64_W; s_scissor[3] = N64_H;
     clip_rect_update();
     s_frame_no++;
+    s_trace = XGFX_TRACE_FRAME && s_frames == XGFX_TRACE_FRAME;
     DIRTY();
     run_dl((const uint32_t*)dl);
     flush();
@@ -1132,6 +1234,10 @@ void f3d_run(const void* dl) {
     wx_frame_overlay();   /* the port's own text (FPS counter, settings panel; patches/021) */
     s_dl_us += xhw_time_us() - t0;
     xgfx_present();
+    if (s_frames % 600 == 0)
+        xhw_logf("[GFX] frame %u state %d: tris %u, rejected %u, culled %u, clipped %u | vtx loads %u, mtx %u",
+                 s_frames, wx_game_state(), s_t_in, s_t_rej, s_t_cull, s_t_clip, s_vtx_loads, s_mtx_loads);
+    s_t_in = s_t_rej = s_t_cull = s_t_clip = s_vtx_loads = s_mtx_loads = 0;
     if (++s_frames % 600 == 0) {
         xhw_logf("[GFX] frame %u: display lists %u us a frame (avg over 600)", s_frames, (unsigned)(s_dl_us / 600));
         s_dl_us = 0;

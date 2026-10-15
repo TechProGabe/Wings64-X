@@ -100,6 +100,8 @@ uint32_t xgfx_tex_pool_free_kb(void);
  * framebuffer rect (pixels) into argb (w x h, A8R8G8B8). Waits for the GPU. */
 void xgfx_read_rect(int32_t x0, int32_t y0, int32_t w, int32_t h, uint32_t* argb);
 
+void xgfx_debug_dump(void);   /* debug: the back buffer now, as [FBDUMP] */
+
 /* Combiner coverage: modes the compiler had to approximate since boot. */
 uint32_t xgfx_cc_approximated(void);
 

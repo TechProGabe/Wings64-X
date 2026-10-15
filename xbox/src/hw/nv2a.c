@@ -654,7 +654,9 @@ void xgfx_clear(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t argb, i
     uint32_t z24;
     if (z01 < 0.0f) z01 = 0.0f;
     if (z01 > 1.0f) z01 = 1.0f;
-    z24 = (uint32_t)(z01 * 16777215.0f + 0.5f);
+    /* in double: in float, 1.0 * 16777215 + 0.5 rounds to 2^24 and the clear wrapped to 0 */
+    z24 = (uint32_t)((double)z01 * 16777215.0 + 0.5);
+    if (z24 > 0xFFFFFFu) z24 = 0xFFFFFFu;
     xgfx_frame_begin();
     clear_fb(x0, y0, x1 - x0, y1 - y0, argb, color, depth, z24);
 }
@@ -1054,6 +1056,14 @@ void xgfx_draw(const XgfxState* st, const XgfxVtx* v, uint32_t ntris) {
     s_draws++;
     s_st_draws++;
     nv2a_fault_draw = s_draws;
+}
+
+/* debug: the back buffer as it is now, as [FBDUMP] (waits for the GPU) */
+void xgfx_debug_dump(void) {
+    xgfx_frame_begin();
+    wait_idle();
+    pb_open();
+    xhw_fbdump(fb_cpu(pb_back_buffer()), s_fbw, s_fbh, s_bpp, (int)pb_back_buffer_pitch());
 }
 
 /* ======================================================================

@@ -11,7 +11,7 @@
 #define WINGS64_SETTINGS_H
 
 #ifndef WINGS64_SETTINGS_MENU
-#define WINGS64_SETTINGS_MENU 1
+#define WINGS64_SETTINGS_MENU 0   /* TODO(M7): 1 once xbox/src/game/settings_menu.c draws the panel */
 #endif
 
 /* Title screen (title_screen.c), with the title level loaded. Selects font 6

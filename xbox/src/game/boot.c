@@ -16,7 +16,7 @@
 #include "xhw.h"
 
 extern void bootproc(void* arg);
-void wx_rdram_init(void);
+void wings64_rdram_init(void);
 
 static const uint8_t* s_rom;
 static uint32_t s_rom_size;
@@ -43,13 +43,19 @@ void wx_boot(const uint8_t* rom, uint32_t size) {
     unsigned ms = 0;
     s_rom = rom;
     s_rom_size = size;
+#if defined(XGFX_SELFTEST) && XGFX_SELFTEST
+    {   /* the back end on its own (xbox/src/hw/xgfx_selftest.c) */
+        void xgfx_selftest(void);
+        xgfx_selftest();
+    }
+#endif
     wx_settings_load();
     xhw_video_set_pref(g_wx_settings.output, g_wx_settings.progressive);
     xhw_video_boot();
     xgfx_init();
     xgfx_set_fps_overlay(g_wx_settings.fps);
     xhw_pad_set_shots(g_wx_settings.screenshots);
-    wx_rdram_init();
+    wings64_rdram_init();
     xhw_log("[BOOT] starting the game (bootproc)");
     bootproc(NULL);
     /* the boot thread is the N64's idle thread from here: the lowest level */

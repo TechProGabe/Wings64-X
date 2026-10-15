@@ -15,7 +15,8 @@
  *   Start, D-pad Start, D-pad
  *   L            none (remappable later, M7)
  *
- * L + R + BACK + BLACK on any port quits to the dashboard (Melee-X). */
+ * L + R + BACK + BLACK on any port quits to the dashboard (Melee-X);
+ * L + R + BACK + WHITE restarts the game (relaunches this XBE). */
 #include <ultra64.h>
 #include <math.h>
 #include <string.h>
@@ -65,10 +66,17 @@ void wx_pad_read(void* out) {
             pads[i].errno = CONT_NO_RESPONSE_ERROR;
             continue;
         }
-        if ((p.buttons & (XHW_BTN_BACK | XHW_BTN_BLACK)) == (XHW_BTN_BACK | XHW_BTN_BLACK) && p.lt > 200 && p.rt > 200) {
-            xhw_log("[PAD] L + R + BACK + BLACK: to the dashboard");
-            xhw_exit_reason("quit by the controller (L+R+BACK+BLACK)");
-            xhw_quit_to_dashboard();
+        if ((p.buttons & XHW_BTN_BACK) && p.lt > 200 && p.rt > 200) {
+            if (p.buttons & XHW_BTN_BLACK) {
+                xhw_log("[PAD] L + R + BACK + BLACK: to the dashboard");
+                xhw_exit_reason("quit by the controller (L+R+BACK+BLACK)");
+                xhw_quit_to_dashboard();
+            }
+            if (p.buttons & XHW_BTN_WHITE) {
+                xhw_log("[PAD] L + R + BACK + WHITE: restart");
+                xhw_exit_reason("restart by the controller (L+R+BACK+WHITE)");
+                xhw_reboot_self();
+            }
         }
         if (p.buttons & XHW_BTN_A) b |= A_BUTTON;
         if (p.buttons & XHW_BTN_X) b |= B_BUTTON;

@@ -96,7 +96,7 @@ if(WX_HAVE_GAME)
     # Nothing calls the game yet (M2): wx_boot_game (xbox/src/game/wx_boot.c)
     # references bootproc, and -include keeps it, so the whole decomp is
     # resolved at link time (an undefined symbol fails the link).
-    target_link_options(wings64_x PRIVATE "@${GAME_OUT}/objects.txt" -include:_wx_boot_game)
+    target_link_options(wings64_x PRIVATE "@${GAME_OUT}/objects.txt" -include:_wx_boot)
 endif()
 add_custom_command(TARGET wings64_x POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/xbe

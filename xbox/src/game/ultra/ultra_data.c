@@ -14,5 +14,6 @@ OSViMode osViModeTable[56];    /* M3: only indexed for osViSetMode */
 long long int rspbootTextStart[1], rspbootTextEnd[1];
 long long int gspFast3DTextStart[1], gspFast3DTextEnd[1];
 long long int gspFast3DDataStart[1], gspFast3DDataEnd[1];
+long long int gspF3DEX_fifoTextStart[1], gspF3DEX_fifoDataStart[1];   /* referenced on a path PW64 never takes (seen at -O0) */
 long long int aspMainTextStart[1], aspMainTextEnd[1];
 long long int aspMainDataStart[1], aspMainDataEnd[1];

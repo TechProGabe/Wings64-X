@@ -12,6 +12,8 @@
 #include <wings64_settings.h>
 #include <wings64_fbfreeze.h>
 
+#include "../wx_game.h"
+
 /* ---- patches/021: the Settings menu (M7: xbox/src/game/settings.c) ---- */
 int wings64_settings_title_init(void) {
     pw64_fatal("TODO: wings64_settings_title_init (M7; or build with -DWINGS64_SETTINGS_MENU=0)", 0);
@@ -50,7 +52,5 @@ void wings64_fb_persist(int on) {
 }
 
 /* ---- patches/022: the audio command list (M6: the RSP audio HLE, PLAN.md D6) ---- */
-/* DIVERGES: until M6 the command list is not run: silence. */
-void wings64_audio_task(OSTask* task) {
-    (void)task;
-}
+/* audio.c: the RSP audio HLE (M6); until then the list is counted and dropped */
+void wings64_audio_task(OSTask* task) { wx_audio_task(task); }

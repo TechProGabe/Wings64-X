@@ -1,6 +1,6 @@
 /* xgfx_selftest.c - the NV2A back end on its own (-DXGFX_SELFTEST=1).
  *
- * Replaces the game with a fixed scene drawn through xgfx.h exactly as the
+ * Runs instead of the game (boot.c calls it first) with a fixed scene drawn through xgfx.h exactly as the
  * interpreter would send it: a shaded triangle (SHADE), a textured quad
  * (TEXEL0 * SHADE, a checkerboard), a fogged triangle, an alpha-blended
  * quad, a depth-tested pair, a stencil shadow-volume pair and a texrect-like
@@ -48,7 +48,7 @@ static void base(XgfxState* s, const XgfxOutput* o) {
     s->scissor[3] = o->fb_h;
 }
 
-void wx_boot(const uint8_t* rom, uint32_t size) {
+void xgfx_selftest(void) {
     static uint32_t tex[64 * 64];
     XgfxOutput o;
     XgfxState s;
@@ -56,8 +56,6 @@ void wx_boot(const uint8_t* rom, uint32_t size) {
     uint32_t t, frame;
     float W, H, zmax;
     int x, y, armed = 0;
-    (void)rom;
-    (void)size;
     xhw_video_boot();
     xgfx_init();
     xgfx_set_fps_overlay(1);
@@ -110,13 +108,15 @@ void wx_boot(const uint8_t* rom, uint32_t size) {
         s.depth_write = 1;
         s.prim[0] = 255;
         s.prim[3] = 255;
-        v[0] = vtx(40 * W, 40 * H, 0.8f * zmax, 0, 0, 0, 0);
-        v[1] = vtx(200 * W, 40 * H, 0.8f * zmax, 0, 0, 0, 0);
-        v[2] = vtx(40 * W, 200 * H, 0.8f * zmax, 0, 0, 0, 0);
+        v[0] = vtx(40 * W, 40 * H, 0.995f * zmax, 0, 0, 0, 0);
+        v[1] = vtx(200 * W, 40 * H, 0.995f * zmax, 0, 0, 0, 0);
+        v[2] = vtx(40 * W, 200 * H, 0.995f * zmax, 0, 0, 0, 0);
         v[3] = v[1];
-        v[4] = vtx(200 * W, 200 * H, 0.8f * zmax, 0, 0, 0, 0);
+        v[4] = vtx(200 * W, 200 * H, 0.995f * zmax, 0, 0, 0, 0);
         v[5] = v[2];
+        for (x = 0; x < 6; x++) v[x].w = 1500.0f;   /* far geometry has a large w */
         xgfx_draw(&s, v, 2);
+        for (x = 0; x < 6; x++) v[x].w = 1.0f;
         s.prim[0] = 0;
         s.prim[1] = 255;
         for (x = 0; x < 6; x++) {

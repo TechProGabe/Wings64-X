@@ -17,7 +17,7 @@
 #include <string.h>
 
 #include "xhw.h"
-#include "wx_game.h"
+#include "../wx_game.h"
 #include "../../gfx/f3d_interp.h"
 
 #define MAX_THREADS 16
@@ -421,7 +421,6 @@ static s32 pi_read_word(u32 devAddr, u32* data) {
 }
 s32 osPiReadIo(u32 devAddr, u32* data) { return pi_read_word(devAddr, data); }
 s32 osPiRawReadIo(u32 devAddr, u32* data) { return pi_read_word(devAddr, data); }
-s32 osPiGetStatus(void) { return 0; }
 
 /* ---------------------------------------------------------------------- SP */
 

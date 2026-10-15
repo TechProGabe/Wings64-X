@@ -60,6 +60,7 @@ void* xhw_game_thread(void);
 unsigned long xhw_thread_eip(void* kthread, unsigned long* esp_out);
 void xhw_watchdog_disable(void);
 void xhw_watchdog_busy(int on);   /* a long, deliberate stall (screenshot) */
+void xhw_code_repair(void);       /* xhw_code_repair.c: .text put back as default.xbe has it */
 void xhw_video_pb_up(void);        /* nv2a.c: pbkit is up, the retrace can follow its vblank */
 void xhw_clock_recheck(void);      /* xhw_clock.c: retraces against ACPI time (the watchdog, 30 s) */
 

@@ -185,6 +185,7 @@ static void main_body(void* arg) {
              XeImageFileName[0].Buffer, (void*)&arg);
     log_previous_exit();
     xhw_ram_lock64_log();
+    xhw_code_repair();   /* before the clock reads the TSC and before any game code runs */
     xhw_watchdog_start();
     xhw_clock_calibrate();
     xhw_mem_log("boot");

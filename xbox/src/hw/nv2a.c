@@ -1103,10 +1103,12 @@ static void tile_write(uint32_t pfb, uint32_t pgraph, uint32_t rdi, uint32_t v) 
 /* Melee-X's tile regions (its docs/renderer.md "Tile regions"): tile 0
  * (the framebuffers) with both low bits set; the CPU then reads the
  * framebuffers through the NV2A aperture (fb_cpu) */
+static int s_tile = XGFX_TILE;
+
 static void tiles_setup(void) {
     int fb_ok = VIDEOREG(NV_PFB_TILE + 8) == pb_back_buffer_pitch();
-    if (fb_ok && (XGFX_TILE & 6)) {
-        uint32_t t0 = (VIDEOREG(NV_PFB_TILE) & ~3u) | (XGFX_TILE & 4 ? 3u : 1u), old;
+    if (fb_ok && (s_tile & 6)) {
+        uint32_t t0 = (VIDEOREG(NV_PFB_TILE) & ~3u) | (s_tile & 4 ? 3u : 1u), old;
         wait_idle();
         old = pb_wait_until_tiles_not_busy();
         if (t0 != VIDEOREG(NV_PFB_TILE)) tile_write(NV_PFB_TILE, NV_PGRAPH_TILE_XBOX, 0x10, t0);

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-time toolchain setup for Wings64-X (Linux x86-64 host).
+# One-time toolchain setup for Wings64-X (Linux x86-64 host; CI uses it too).
 #
 #   LLVM 21   -> $LLVM      (default /opt/llvm21): clang/lld for nxdk and the game
 #   nxdk      -> $NXDK_DIR  (default /opt/nxdk), pinned below, built with LLVM 21

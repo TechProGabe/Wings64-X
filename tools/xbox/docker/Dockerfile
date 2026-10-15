@@ -28,3 +28,9 @@ RUN dpkg --add-architecture i386 && apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libc6:i386 libstdc++6:i386 \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
+# zstd/zlib/xml for nxdk's tools; python3-pip for the host-side scripts.
+ARG LLVM=21
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      libzstd-dev zlib1g-dev libxml2-dev python3-pip \
+ && rm -rf /var/lib/apt/lists/*
+ENV LLVM=/usr/lib/llvm-${LLVM}

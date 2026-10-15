@@ -11,7 +11,10 @@ case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) export MSYS_NO_PATHCONV=1; vroot="$(
 tty=; [ -t 1 ] && tty=-t
 docker run --rm $tty -v "$vroot":/src -w /src \
   -e XBOX_CFLAGS -e XBOX_CMAKE_ARGS -e XBOX_NINJA_ARGS -e XBOX_FORCE -e XBOX_KEEP_TEMPS -e XBOX_LTO -e XBOX_PGO \
-  wings64-x:sdk xbox/build.sh
+  wings64-x:sdk bash -c '
+  set -e
+  export NXDK_DIR=/usr/src/nxdk
+  xbox/build.sh'
 # Dashboard icon: a $$XTIMAGE section in the XBE plus default.tbn next to it,
 # from xbox/assets/logo.png (tools/xbox/xbe_title_image.py). Needs host python3 +
 # Pillow, which the image doesn't have; skipped without them or with XBOX_NO_ICON.

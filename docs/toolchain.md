@@ -47,7 +47,7 @@ built with LLVM 21 from apt.llvm.org, Debian; `patch` comes with
 build-essential). The decomp is fetched on the host first
 (`tools/xbox/fetch_decomp.sh`); the container sees the checkout at `/src`.
 The image is `wings64-x:sdk` (`docker build -t wings64-x:sdk tools/xbox/docker`):
-toolchain only, no game and no ROM, which the user supplies at run time.
+toolchain only, no game and no ROM, which the user supplies at run time. CI runs `tools/xbox/setup.sh` on the runner instead (M10).
 
 ## The game triple
 

@@ -3,6 +3,29 @@
 Newest first. Each milestone entry says what was verified and how; "xemu"
 results are emulator-only (no timing, audio or memory claims from them).
 
+## M10 (part) — release workflow, package, README, LICENSE (2026-10-15)
+
+Branch `worktree-agent-aa82d2fc07be32a06` (from `port` 367d94b); nothing pushed, no tag. Not verified
+on a runner: the workflow has not run in GitHub Actions yet, and no console has run the zip.
+
+- `.github/workflows/build.yml`: push, pull request and `v*` tags. Ubuntu runner, toolchain cached
+  (`tools/xbox/setup.sh`, now without the disc_lower step), `tools/xbox/fetch_decomp.sh`, `XBOX_LTO=1`
+  build, dashboard icon, host tests (`rom_leak_check`, `test_rom_check`, `test_cc`, `test_texconv`,
+  `test_asp_hle`), artifact upload. A tag also runs `package_release.py` and publishes the zip and
+  `build-xbox/wings64_x.map` with `.github/release-notes.md` (a template: its brackets go out unless edited).
+- `tools/xbox/package_release.py <tag>`: zips `Wings64-X/default.xbe`, `default.tbn`, `tools/make-xiso`,
+  README, LICENSE. Refuses a build with XBOX_CFLAGS, with `XBOX_LTO` off, or without the game, read from
+  `build-xbox/CMakeCache.txt`. Checked with a fake build: the three refusals and a good zip; no ROM can be
+  in it (the zip is checked for ROM extensions).
+- `tools/make-xiso <folder> <ROM> [out.iso]`: Wings64-X's copy of Melee-X's script; it checks the ROM's
+  extension and size (8,388,608 bytes), not its SHA-1 (the console does that).
+- `README.md` (user-facing, checked against the code) and `LICENSE.md` (MIT for the port; the components
+  and their terms, the Melee-X note).
+- `docs/toolchain.md`: the Docker image is `wings64-x:sdk` with no disc_lower step (the open item above).
+- Open: `docs/` is not complete for M10 (architecture, testing and platform docs are missing); the
+  workflow and the zip on a real runner and console; PGO (M9) is not in the build, so the release is ThinLTO
+  without it; the README's status line says what has run (xemu only).
+
 ## M7 (part, follow-up) — "Port settings" in Option, title menu at the bottom (2026-10-15)
 
 Branch `port`; nothing pushed. Maintainer's call: the panel is "Port settings" in the game's Option menu

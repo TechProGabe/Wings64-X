@@ -373,7 +373,7 @@ Pilotwings' use of the buttons):
 
 | N64 | Xbox |
 |---|---|
-| control stick | left stick (radial dead zone, then scaled so full tilt reaches ±80, the N64's usable rim) |
+| control stick | left stick: a **radial dead zone** (Settings row, 0–60 % in steps of 5, default 20 %, `stick_deadzone` in `settings.ini`), then the remaining range rescaled so full tilt reaches ±80, the N64's usable rim, so a large dead zone costs no top speed; Melee-X's `pad.c` code. No automatic calibration (OpenCrossing tried it: a worn stick's rest point moves after every release, so a learned value walks the vehicle on its own); the live readout in the menu is how a user picks the value for their pad |
 | A | A |
 | B | X (where the N64 B sits relative to A) |
 | C-up / C-down / C-left / C-right | right stick past ~50 %, and Y / B / White / Black |
@@ -577,7 +577,7 @@ panel's Stereo/Mono row. BACK on the title opens the same panel. Rows:
 | Widescreen | On, Off, Auto; shown as "Auto, 16:9" / "Auto, 4:3" | **at once** (content rect, hor+ and 2D mapping are per-frame state; §3.2) |
 | FPS counter | On, Off | at once (drawn in the HUD number font at the top, as the DC's) |
 | Screenshots (BACK) | On, Off | at once; row present in test builds only |
-| Stick dead zone | 0–60 %, steps of 5 | at once |
+| Stick dead zone | 0–60 %, steps of 5, default 20 %, with a live stick readout next to the value (the raw stick's current tilt as a percentage, as Melee-X's and OpenCrossing's rows show) | at once |
 | Buttons | Default, (file) | read-only hint that `settings.ini` has the map |
 | Save and restart | relaunches the XBE (`xhw_reboot_self`) when a `*` row changed | |
 | Return | saves `settings.ini` (B too) | |
@@ -909,6 +909,7 @@ tools/xbox/ setup.sh docker/ msys/ compile_game.py fetch_decomp.sh xemu_run.sh f
 | Button layout | the D8 table ("whatever makes sense") | D8, M3 |
 | 1080i in Auto | **yes**, Auto tops out at 1080i where the dashboard allows it | §3.2, M7 |
 | Widescreen | **a Settings toggle** (On / Off / Auto) at every output, applied at once without a restart; not left to the dashboard | §3.2, §3.4, M7 |
+| Stick dead zone | **a Settings row** (0–60 %, default 20 %, live readout), applied at once; radial, with the range rescaled to the N64 rim | D8, §3.4, M3 |
 | J/E ROMs | **refused** with a clear card; no JP build planned | §3.1, M1 |
 | Memory | **64 MB enforced**: 128 MB consoles run as 64 MB, held at boot | D2, M0 |
 | CPU | **upgraded/overclocked CPUs must work**: time from the ACPI timer and the vblank, never an assumed 733 MHz; `[CLOCK]` logged | D5, M0, M9 |
@@ -931,3 +932,35 @@ tools/xbox/ setup.sh docker/ msys/ compile_game.py fetch_decomp.sh xemu_run.sh f
    commit and nothing is contributed upstream, as in wings64-dc; its
    `CONTRIBUTING.md` forbids AI-generated contributions and asks agents to
    discourage AI analysis of the project, which `CLAUDE.md` will record.
+
+---
+
+## 8. Seed prompt for the executing model
+
+Paste this to start the build (and after every context flush), as wings64-dc's
+`kb/RESUME.md` does:
+
+> You are executing Wings64-X, a native original-Xbox port of Pilotwings 64 built
+> from the n64decomp/pw64 decompilation (pinned at `1a8558f`) with nxdk and
+> LLVM 21. Read `PLAN.md` first: it is binding on architecture (section 2), the
+> requirements as designed (section 3), the milestone order and exit checks
+> (section 4), and the maintainer's decisions (section 7). Then read, in the
+> sibling checkouts, Melee-X's `CLAUDE.md`, `docs/platform.md`, `docs/toolchain.md`
+> and `xbox/src/hw/{xhw_main.c,xhw_video.c,xhw_splash.c}`, and wings64-dc's
+> `CLAUDE.md`, `kb/traps.md`, `patches/README.md`, `src/dc/gfx/gfx_f3d.c`,
+> `src/dc/ultra/os_shim.c` and `src/dc/settings.c`. Work milestone by milestone
+> starting at M0; each ends with a `default.xbe` that boots, a `docs/handoff.md`
+> entry and a commit (ask before committing; never push to `main` without the
+> maintainer's go-ahead). Hard rules: never commit ROM material or anything
+> derived from it (images of game frames included); never edit
+> `external/pw64-decomp/` in place, change `patches/` and re-fetch; every patch
+> is `#ifdef WINGS64_XBOX`-guarded with a `.md`; every port-side departure from
+> the game is marked `DIVERGES: <reason>`; every optimisation and every risky
+> change has a kill switch and the default is the good build; the splash is
+> Melee-X's `xhw_splash.c` as is; the settings menu is in the game's own style
+> (wings64-dc patch 021); 64 MB is enforced; time comes from the ACPI timer and
+> the vblank, never an assumed CPU clock; nothing runs on a ROM that has not
+> passed the SHA-1 check; the decomp is consumed downstream under MIT and
+> nothing is sent upstream. xemu is for crashes and pictures, not timing or
+> audio: say when a result is emulator-only. Report what you verified and how,
+> not what you intended.

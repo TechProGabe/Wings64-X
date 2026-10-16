@@ -110,7 +110,6 @@ Your dashboard decides what your TV and cables can handle, and the port never go
 - **480i** works on everything, composite included.
 - **480p** needs an HDTV or VGA pack and 480p turned on in the dashboard.
 - **720p** needs an HDTV or VGA pack and 720p turned on in the dashboard. It's always 16:9.
-- **1080i** isn't offered. It ran, but it cost too much frame rate for what it adds.
 
 The first time you pick 720p, the game asks you to press A to keep it. If your TV goes black and you can't see the prompt, just wait 15 seconds and it comes back in 480i on its own. You can also hold **Back** while the game starts to force 480i.
 

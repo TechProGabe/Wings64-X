@@ -1437,7 +1437,8 @@ static void hold_frame(void) {
  * screen, so a framebuffer of the three could show leftovers there: at
  * 720p a line now and then in the black at the right (maintainer, console
  * run 15). A held or persisted frame (hold_frame) and this frame's
- * extended draws come after and cover the strips as before.
+ * extended draws come after and cover the strips as before; a frame without
+ * hor+ clears them again at its end (f3d_run).
  * DIVERGES: none (the N64 has no pillarbox). Kill switch -DXGFX_SIDE_CLEAR=0. */
 #ifndef XGFX_SIDE_CLEAR
 #define XGFX_SIDE_CLEAR 1
@@ -1485,6 +1486,11 @@ void f3d_run(const void* dl) {
         xgfx_clear(cx, m, cx + mx, ch - m, 0xFF000000u, 1, 0, 1.0f);
         xgfx_clear(cx + cw - mx, m, cx + cw, ch - m, 0xFF000000u, 1, 0, 1.0f);
     }
+    /* and again once the frame is drawn, unless hor+ drew the world into the
+     * strips: the fitted title maps its N64 x 310-320 past the box (about 13
+     * px at 720p), and those draws are not all scissored to it: a sliver of
+     * the flyover showed as a line in the right strip (console run rc1) */
+    if (!s_hp) side_clear();
     wx_frame_overlay();   /* the port's own text (FPS counter, settings panel; patches/021) */
     {
         uint64_t t1 = xhw_time_us();

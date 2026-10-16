@@ -157,6 +157,7 @@ is not defined); it is not a switch to set.
 | `WX_PAD_COMBO_VI_ONLY` | 0 | test: the combos only from the VI thread, every 8 retraces | `game/pad.c` |
 | `XHW_FPS_DEFAULT` | `XHW_TEST_BUILD` | the FPS counter's default (`[video] fps`) | `xbox/src/game/settings.c` |
 | `XHW_LOG_BOOT_UNTIL_FRAME` | 1 | boot.log flushes every line only until the first presented frame (0: for the first 600 retraces, which reached into the title and hitched it) | `xbox/src/hw/xhw_sys.c` |
+| `XGFX_TILE_MISMATCH_OFF` | 1 | a tile region whose pitch differs from its surface's (1080i: pbkit rounds the tile pitch, not the surface's) is switched off with its Z compression (0: left as pbkit set it; the console faulted on the first clear) | `xbox/src/hw/nv2a.c` |
 | `WX_SAVE_FILL` | 1 | Port settings > System > "Complete save": writes File 2 with every event at full points (0: the row is gone) | `xbox/include/game/wings64_settings.h`, `xbox/src/game/settings_menu.c` |
 | `WINGS64_TITLE_TEXT_DROP` | 6 | the title menu rows moved down inside their box, centred (0: the game's margins) | `xbox/include/game/wings64_settings.h` |
 | `WX_HAVE_GAME` | derived (CMake: decomp present) | links the game objects | `xbox/CMakeLists.txt` |

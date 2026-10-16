@@ -1417,16 +1417,35 @@ static void tile_write(uint32_t pfb, uint32_t pgraph, uint32_t rdi, uint32_t v) 
  * framebuffers through the NV2A aperture (fb_cpu) */
 static int s_tile = XGFX_TILE;
 
+/* 1080i: pbkit draws with the unrounded pitch (1920 x 4 = 0x1E00 for
+ * Z24S8, 0xF00 for the 16-bit colour) inside tile regions it set up with
+ * the next legal tile pitch (0x2000, 0x1000), Z compression on: the console
+ * faulted on the first depth clear (PGRAPH LIMIT_ZETA, method 0x1D94) and
+ * never drew a frame (console run 14; xemu has no tiling and ran it). A
+ * region whose pitch differs from the surface's is switched off (a linear
+ * surface takes any 64-byte pitch) and its Z compression with it. 480 and
+ * 720p already have legal pitches and keep their tiles. Kill switch
+ * -DXGFX_TILE_MISMATCH_OFF=0. */
+#ifndef XGFX_TILE_MISMATCH_OFF
+#define XGFX_TILE_MISMATCH_OFF 1
+#endif
+
 static void tiles_setup(void) {
     int fb_ok = VIDEOREG(NV_PFB_TILE + 8) == pb_back_buffer_pitch();
     int z_ok = VIDEOREG(NV_PFB_TILE + 16 + 8) == zeta_pitch();
-    if (s_tile) {
-        uint32_t t0 = VIDEOREG(NV_PFB_TILE), z1 = VIDEOREG(NV_PFB_ZCOMP + 4), old;
+    if (s_tile || (XGFX_TILE_MISMATCH_OFF && (!fb_ok || !z_ok))) {
+        uint32_t t0 = VIDEOREG(NV_PFB_TILE), t1 = VIDEOREG(NV_PFB_TILE + 16), z1 = VIDEOREG(NV_PFB_ZCOMP + 4), old;
         if (fb_ok && (s_tile & 6)) t0 = (t0 & ~3u) | (s_tile & 4 ? 3u : 1u);
         if (z_ok && (s_tile & 8)) z1 = 0;
+        if (XGFX_TILE_MISMATCH_OFF && !fb_ok) t0 &= ~1u;   /* not valid: linear */
+        if (XGFX_TILE_MISMATCH_OFF && !z_ok) {
+            t1 &= ~1u;
+            z1 = 0;
+        }
         wait_idle();
         old = pb_wait_until_tiles_not_busy();
         if (t0 != VIDEOREG(NV_PFB_TILE)) tile_write(NV_PFB_TILE, NV_PGRAPH_TILE_XBOX, 0x10, t0);
+        if (t1 != VIDEOREG(NV_PFB_TILE + 16)) tile_write(NV_PFB_TILE + 16, NV_PGRAPH_TILE_XBOX + 16, 0x10 + 4, t1);
         if (z1 != VIDEOREG(NV_PFB_ZCOMP + 4)) tile_write(NV_PFB_ZCOMP + 4, NV_PGRAPH_ZCOMP_XBOX + 4, 0x90 + 4, z1);
         VIDEOREG(NV_PFIFO_CACHE1_DMA_PUSH) = old;
     }
@@ -1437,7 +1456,8 @@ static void tiles_setup(void) {
         s_fb_ap_end = end;
     }
     xhw_logf("[NV2A] tiles: XGFX_TILE %d%s%s, tile 0 %08x, tile 1 %08x zcomp %08x, CPU framebuffer access %s",
-             XGFX_TILE, fb_ok ? "" : " (fb pitch differs: untouched)", z_ok ? "" : " (depth pitch differs: untouched)",
+             XGFX_TILE, fb_ok ? "" : XGFX_TILE_MISMATCH_OFF ? " (fb pitch differs: tile off)" : " (fb pitch differs: untouched)",
+             z_ok ? "" : XGFX_TILE_MISMATCH_OFF ? " (depth pitch differs: tile and zcomp off)" : " (depth pitch differs: untouched)",
              (unsigned)VIDEOREG(NV_PFB_TILE), (unsigned)VIDEOREG(NV_PFB_TILE + 16), (unsigned)VIDEOREG(NV_PFB_ZCOMP + 4),
              s_fb_ap ? "through the aperture" : "direct");
 }

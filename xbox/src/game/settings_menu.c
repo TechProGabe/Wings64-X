@@ -309,6 +309,7 @@ static s16 sLegend[ROW_CAP];
 static s16 sHint[ROW_KINDS][ROW_CAP];
 static s16 sFilterNote[2][ROW_CAP];   /* the texture filter's hint follows its value */
 static s16 sRestartIdle[ROW_CAP];     /* Apply and restart with nothing to apply */
+static s16 sOutOff[5][ROW_CAP];       /* Resolution: the picked mode isn't allowed (dashboard or cable) */
 static s16 sFillArmed[ROW_CAP];       /* Complete save: File 2 holds a save, A again overwrites it */
 static s16 sFillDone[ROW_CAP];        /* Complete save: written */
 static s32 sFillState;                /* 0, 1 armed, 2 written; back to 0 off the row */
@@ -466,17 +467,25 @@ static void panel_init(void) {
     glyphs(sFilterNote[0], 0, ROW_CAP, MENU_FONT, "The game's own look");
     glyphs(sFilterNote[1], 0, ROW_CAP, MENU_FONT, "Crisp square pixels");
     glyphs(sRestartIdle, 0, ROW_CAP, MENU_FONT, "Nothing to apply yet");
-    glyphs(sHint[ROW_PAGE_VIDEO], 0, ROW_CAP, MENU_FONT, "Picture and display");
+    glyphs(sHint[ROW_PAGE_VIDEO], 0, ROW_CAP, MENU_FONT, "Widescreen is in flight only");
     glyphs(sHint[ROW_PAGE_CONTROLS], 0, ROW_CAP, MENU_FONT, "Stick and rumble");
     glyphs(sHint[ROW_PAGE_SYSTEM], 0, ROW_CAP, MENU_FONT, WX_SAVE_FILL ? "Screenshots, complete save" : "Screenshots");
     glyphs(sHint[ROW_VIDEO], 0, ROW_CAP, MENU_FONT, "HD needs an HD cable");
-    glyphs(sHint[ROW_WIDE], 0, ROW_CAP, MENU_FONT, "Auto: 16:9 at 720p and 1080i");
+    glyphs(sHint[ROW_WIDE], 0, ROW_CAP, MENU_FONT, "Flight only: menus stay 4:3");
     glyphs(sHint[ROW_FPS], 0, ROW_CAP, MENU_FONT, "Frame rate, top left");
     glyphs(sHint[ROW_RATE], 0, ROW_CAP, MENU_FONT, "30 caps it like the N64");
     glyphs(sHint[ROW_RESTART], 0, ROW_CAP, MENU_FONT, "Restarts to apply *");
     glyphs(sHint[ROW_DEADZONE], 0, ROW_CAP, MENU_FONT, "Ignores small stick drift");
     glyphs(sHint[ROW_RUMBLE], 0, ROW_CAP, MENU_FONT, "Shakes when you crash");
-    glyphs(sHint[ROW_SHOTS], 0, ROW_CAP, MENU_FONT, "BACK saves a picture");
+    glyphs(sHint[ROW_SHOTS], 0, ROW_CAP, MENU_FONT, "BACK: a picture; the game lags");
+    {   /* why a picked mode shows "720p > 480i": the dashboard (or the cable) */
+        int m;
+        char b[40];
+        for (m = 1; m < 5; m++) {
+            snprintf(b, sizeof b, "%s is off in the dashboard", k_out_names[m]);
+            glyphs(sOutOff[m], 0, ROW_CAP, MENU_FONT, b);
+        }
+    }
     glyphs(sHint[ROW_FILL], 0, ROW_CAP, MENU_FONT, "A: every event gold in File 2");
     glyphs(sFillArmed, 0, ROW_CAP, MENU_FONT, "File 2 has a save: A again");
     glyphs(sFillDone, 0, ROW_CAP, MENU_FONT, "File 2 is now complete");
@@ -705,6 +714,10 @@ static void panel_draw_legend(void) {
     } else if (kind == ROW_RESTART) {
         line = restart_pending() ? sHint[ROW_RESTART] : sRestartIdle;
         warn = restart_pending();
+    } else if (kind == ROW_VIDEO && g_wx_settings.output != XHW_OUT_AUTO &&
+               out_resolved(g_wx_settings.output) != g_wx_settings.output) {
+        line = sOutOff[g_wx_settings.output];
+        warn = 1;
     } else if (kind == ROW_FILL && sFillState) {
         line = sFillState == 1 ? sFillArmed : sFillDone;
         warn = sFillState == 1;

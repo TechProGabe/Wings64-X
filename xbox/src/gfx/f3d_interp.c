@@ -311,6 +311,7 @@ static int s_hp;                /* hor+ this frame */
 static int s_world;             /* inside a world view's tags (patches/050) */
 static int s_anchor = 'C';      /* the HUD anchor of the 2D draws that follow (patches/052) */
 static int s_extend;            /* this draw state: a world view's perspective draw, scissored to s_wx0..s_wx1 */
+static int s_side_drawn;        /* this frame drew into the pillarbox strips on purpose (side_clear) */
 static float s_xoff;            /* this draw state: the anchor's shift in framebuffer pixels */
 #define TITLE_MARGIN 12.0f   /* output pixels at 480; scaled with the content rect */
 
@@ -328,7 +329,12 @@ static void map_setup(void) {
     s_ch = (float)s_out.fb_h;
     s_cw = (float)s_out.fb_w * (4.0f / 3.0f) / shown;
     if (wide && !XGFX_HORPLUS) s_cw = (float)s_out.fb_w;   /* kill switch: 16:9 as a plain stretch */
-    s_cx = ((float)s_out.fb_w - s_cw) * 0.5f;
+    /* whole pixels: 1280 x (4/3) / (16/9) came out as 960.0 with s_cx
+     * 159.999, the (int) casts put the box at 159..1119 and the title's
+     * right margin clear stopped one column short: the scene's last column
+     * showed as a line at the box's right edge at 720p (console rc1, rc1b) */
+    s_cw = (float)(int)(s_cw + 0.5f);
+    s_cx = (float)(int)(((float)s_out.fb_w - s_cw) * 0.5f + 0.5f);
     s_cy = 0.0f;
     /* DIVERGES: hor+ (the title stays in its fitted box) */
     s_hp = wide && XGFX_HORPLUS && !s_title && s_cw < (float)s_out.fb_w - 1.0f;
@@ -379,8 +385,31 @@ static int s_trace;   /* -DXGFX_TRACE_FRAME=<n>: frame n's draws as [DRAW] lines
 #define XGFX_TRACE_FRAME 0
 #endif
 
+/* a draw that lands in the pillarbox strips without being a hor+ world
+ * draw (side_clear): the first 16 are logged, in every build, to name the
+ * one behind the line at 720p (console, rc1) */
+static void log_side_leak(void) {
+    static unsigned s_n;
+    float x0 = 1e9f, x1 = -1e9f, bl = s_cx, br = s_cx + s_cw;
+    uint32_t i;
+    if (s_extend || s_n >= 16 || s_cw >= (float)s_out.fb_w - 1.0f) return;
+    if (s_st.scissor[0] >= (int32_t)bl && s_st.scissor[2] <= (int32_t)br) return;   /* clipped to the box */
+    for (i = 0; i < s_nb * 3; i++) {
+        if (s_batch[i].x < x0) x0 = s_batch[i].x;
+        if (s_batch[i].x > x1) x1 = s_batch[i].x;
+    }
+    if (x0 >= bl - 0.5f && x1 <= br + 0.5f) return;
+    s_n++;
+    xhw_logf("[GFX] draw past the 4:3 box (%u): state %d, title %d, hor+ %d, overlay %d, x %d..%d, box %d..%d, "
+             "scissor %d..%d, %u tris, tex %u, cc %08x:%08x, depth %u",
+             s_n, wx_game_state(), s_title, s_hp, s_overlay, (int)x0, (int)x1, (int)bl, (int)br,
+             (int)s_st.scissor[0], (int)s_st.scissor[2], (unsigned)s_nb, (unsigned)s_st.tex[0],
+             (unsigned)s_st.cc0, (unsigned)s_st.cc1, (unsigned)s_st.depth_func);
+}
+
 static void flush(void) {
     if (!s_nb) return;
+    log_side_leak();
     if (s_trace) {
         uint32_t i;
         float zlo = 2e9f, zhi = -2e9f;
@@ -399,6 +428,7 @@ static void flush(void) {
                  (unsigned)s_st.stencil, (unsigned)s_st.fog, s_st.prim[0], s_st.prim[1], s_st.prim[2], s_st.prim[3],
                  s_st.env[0], s_st.env[1], s_st.env[2], s_st.env[3], (unsigned)R.geom, (unsigned)R.oml,
                  (int)s_batch[0].x, (int)s_batch[0].y, (int)(s_batch[0].z * 1000.0f / s_out.zmax), s_batch[0].rgba[3]);
+    if (s_extend) s_side_drawn = 1;
     xgfx_draw(&s_st, s_batch, s_nb);
 #ifdef XGFX_TRACE_DUMP_AT
     if (s_trace) {   /* -DXGFX_TRACE_DUMP_AT=<n>: the picture after the trace frame's n-th draw */
@@ -789,6 +819,7 @@ static void overlay_full(XgfxVtx* p, int n) {
     if (x0 > sx0 || x1 < sx1) return;
     span_y = y0 <= sy0 && y1 >= sy1;
     if (!span_y && !s_hp) return;
+    if (s_hp) s_side_drawn = 1;   /* stretched across the 16:9 width */
     for (i = 0; i < n; i++) {
         if (p[i].x <= sx0) p[i].x = s_hp ? s_wx0 : s_cx;
         else if (p[i].x >= sx1) p[i].x = s_hp ? s_wx1 : s_cx + s_cw;
@@ -1371,6 +1402,7 @@ static void hold_quad(uint32_t tex, float u, float v, int filter) {
     XgfxVtx q[6];
     float x1 = (float)s_out.fb_w, y1 = (float)s_out.fb_h;
     int i;
+    s_side_drawn = 1;   /* the whole last frame, strips included */
     memset(&st, 0, sizeof st);
     st.cc0 = cc_words_const(1 /* TEXEL0 */, 1, &st.cc1);
     st.tex[0] = tex;
@@ -1459,6 +1491,7 @@ void f3d_run(const void* dl) {
         for (i = 0; i < 16; i++) R.mv[0][i >> 2][i & 3] = R.proj[i >> 2][i & 3] = (i % 5) == 0 ? 1.0f : 0.0f;
     }
     xgfx_frame_begin();
+    s_side_drawn = 0;
     side_clear();
     hold_frame();
     s_title = wx_game_state() == 0;
@@ -1486,11 +1519,14 @@ void f3d_run(const void* dl) {
         xgfx_clear(cx, m, cx + mx, ch - m, 0xFF000000u, 1, 0, 1.0f);
         xgfx_clear(cx + cw - mx, m, cx + cw, ch - m, 0xFF000000u, 1, 0, 1.0f);
     }
-    /* and again once the frame is drawn, unless hor+ drew the world into the
-     * strips: the fitted title maps its N64 x 310-320 past the box (about 13
-     * px at 720p), and those draws are not all scissored to it: a sliver of
-     * the flyover showed as a line in the right strip (console run rc1) */
-    if (!s_hp) side_clear();
+    /* and again once the frame is drawn, unless it drew into the strips on
+     * purpose (a hor+ world draw, a fill stretched to 16:9, a held frame):
+     * the fitted title maps its N64 x 310-320 past the box (about 13 px at
+     * 720p) and not every draw there is scissored to it, so a sliver of the
+     * flyover showed as a line in the right strip (console, rc1). Keyed on
+     * what was drawn, not on hor+ being on: at 720p with Widescreen Auto a
+     * screen with no tagged world view is hor+ and drew nothing there (rc1b) */
+    if (!s_side_drawn) side_clear();
     wx_frame_overlay();   /* the port's own text (FPS counter, settings panel; patches/021) */
     {
         uint64_t t1 = xhw_time_us();

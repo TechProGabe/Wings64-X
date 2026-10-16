@@ -634,6 +634,17 @@ static void zeta_guard(void) {
     }
 }
 
+/* A clear is clipped by the window clip (the scissor) the last draw left
+ * set: the title's right margin clear lost its last column to a draw's
+ * scissor ending one short, and that column of the flyover showed as a line
+ * at the 4:3 box's right edge at 720p (console rc1, rc1b; xemu too, x 1119).
+ * Each clear opens the clip to the whole surface; the next draw sends its
+ * own again (clip_invalidate). Kill switch -DXGFX_CLEAR_FULL_CLIP=0. */
+#ifndef XGFX_CLEAR_FULL_CLIP
+#define XGFX_CLEAR_FULL_CLIP 1
+#endif
+static void clip_invalidate(void);
+
 static void clear_fb(int x, int y, int w, int h, uint32_t argb, int color, int depth, uint32_t z24) {
     if (x < 0) { w += x; x = 0; }
     if (y < 0) { h += y; y = 0; }
@@ -641,6 +652,13 @@ static void clear_fb(int x, int y, int w, int h, uint32_t argb, int color, int d
     if (y + h > s_rh) h = s_rh - y;
     if (w <= 0 || h <= 0) return;
     pb_close();
+    if (XGFX_CLEAR_FULL_CLIP) {
+        uint32_t* p = pb_begin();
+        p = pb_push1(p, NV097_SET_WINDOW_CLIP_HORIZONTAL, (uint32_t)(s_rw - 1) << 16);
+        p = pb_push1(p, NV097_SET_WINDOW_CLIP_VERTICAL, (uint32_t)(s_rh - 1) << 16);
+        pb_end(p);
+        clip_invalidate();
+    }
     if (depth) zeta_guard();
     if (color) pb_fill(x, y, w, h, argb);   /* converts to the surface's format itself */
     if (depth) {
@@ -985,6 +1003,8 @@ static uint32_t s_unit_key[2][6];
         uint32_t v_ = (uint32_t)(value);                                                                            \
         if (s_fx[i] != v_) { put1(method, v_); s_fx[i] = v_; }                                                      \
     } while (0)
+
+static void clip_invalidate(void) { s_fx[F_CLIP_H] = s_fx[F_CLIP_V] = 0xFFFFFFFFu; }
 
 static void state_reset(void) {
     memset(s_fx, 0xFF, sizeof s_fx);

@@ -820,6 +820,7 @@ void nv2a_vbl_probe(void) {
 void xgfx_present(void) {
     int shot;
     if (s_shut) return;
+    if (s_frame == 0) xhw_log_booted();
     xgfx_frame_begin();
     pb_budget();
     if (s_fps_on) fps_overlay();

@@ -22,6 +22,7 @@ void xhw_mem_log(const char* where);
 void xhw_flush_handle(HANDLE h);
 void xhw_flush_volume(char drive);
 void xhw_log_sync(void);               /* flush pending boot.log lines if the lock is free */
+void xhw_log_booted(void);             /* the first frame is presented: boot.log stops flushing every line */
 int xhw_log_try(const char* line);     /* log + flush without blocking on the lock for long */
 int xhw_log_try_file(const char* text);   /* the same, boot.log and the tail only (not COM1) */
 void xhw_log_keep(const char* name);   /* boot.log closed and kept as name */

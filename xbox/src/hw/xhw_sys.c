@@ -66,6 +66,12 @@ static HANDLE s_bootlog = INVALID_HANDLE_VALUE;
 static unsigned s_bootlog_bytes;
 static int s_bootlog_dirty;       /* written since the last flush */
 static uint64_t s_bootlog_flushed;
+/* Kill switch -DXHW_LOG_BOOT_UNTIL_FRAME=0: every line flushed for the first
+ * 600 retraces, as before. Default: only until the first presented frame. */
+#ifndef XHW_LOG_BOOT_UNTIL_FRAME
+#define XHW_LOG_BOOT_UNTIL_FRAME 1
+#endif
+static volatile int s_log_booted;   /* xhw_log_booted: the game has drawn */
 static int s_bootlog_part;        /* 0 boot.log, then 2 boot2.log, 3 boot3.log, 2, ... */
 static HANDLE s_tracelog = INVALID_HANDLE_VALUE;
 static unsigned s_tracelog_bytes;
@@ -207,8 +213,13 @@ static void log_write_locked(const char* s, size_t n) {
          * warnings, faults); otherwise at most once a second here, and the
          * watchdog's 1 Hz tick (xhw_log_sync) flushes whatever is left, so
          * at most a second of routine lines can be lost. A flush per line
-         * costs a disk write, and a chatty scene then runs at a few fps. */
-        if (xhw_frame_count() < 600 || log_line_urgent(s, n) || xhw_time_ns() - s_bootlog_flushed > 1000000000ull)
+         * costs a disk write, and a chatty scene then runs at a few fps.
+         * Booting ends at the first presented frame: the 600-retrace window
+         * reached into the title, whose helicopter entrance logs ~50
+         * texture-miss and frame lines, each flushed on the drawing thread:
+         * a ~0.5 s hitch on the console (runs 10-12). */
+        if ((xhw_frame_count() < 600 && !(XHW_LOG_BOOT_UNTIL_FRAME && s_log_booted)) || log_line_urgent(s, n) ||
+            xhw_time_ns() - s_bootlog_flushed > 1000000000ull)
             log_flush_locked();
     }
 }
@@ -297,6 +308,8 @@ size_t xhw_log_tail(char* out, size_t cap) {
     out[len] = '\0';
     return len;
 }
+
+void xhw_log_booted(void) { s_log_booted = 1; }
 
 void xhw_log(const char* line) {
     log_write(line, strlen(line), 1);

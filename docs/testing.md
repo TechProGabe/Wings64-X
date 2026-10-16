@@ -153,9 +153,12 @@ is not defined); it is not a switch to set.
 | `WX_FPS_GAME_FONT` | 0 | wings64-dc's game-font FPS counter instead of the renderer's | `settings.c`, `settings_menu.c` |
 | `WX_RUMBLE` | 1 | rumble on a crash (patch 037); 0 the hook does nothing | `ultra/hooks.c` |
 | `WX_PAD_COMBO_WATCH` | 1 | the L+R+BACK combos also from the VI thread when the game has not read for 30 retraces; 0 only at the game's reads | `game/pad.c` |
+| `WX_PAD_CBUTTONS_DPAD` | 1 | the D-pad (and the right stick) as the C buttons (0: C on the right stick and Y/B/White/Black, the D-pad as the N64 D-pad) | `game/pad.c` |
 | `WX_PAD_COMBO_VI_ONLY` | 0 | test: the combos only from the VI thread, every 8 retraces | `game/pad.c` |
 | `XHW_FPS_DEFAULT` | `XHW_TEST_BUILD` | the FPS counter's default (`[video] fps`) | `xbox/src/game/settings.c` |
 | `XHW_LOG_BOOT_UNTIL_FRAME` | 1 | boot.log flushes every line only until the first presented frame (0: for the first 600 retraces, which reached into the title and hitched it) | `xbox/src/hw/xhw_sys.c` |
+| `WX_SAVE_FILL` | 1 | Port settings > System > "Complete save": writes File 2 with every event at full points (0: the row is gone) | `xbox/include/game/wings64_settings.h`, `xbox/src/game/settings_menu.c` |
+| `WINGS64_TITLE_TEXT_DROP` | 6 | the title menu rows moved down inside their box, centred (0: the game's margins) | `xbox/include/game/wings64_settings.h` |
 | `WX_HAVE_GAME` | derived (CMake: decomp present) | links the game objects | `xbox/CMakeLists.txt` |
 | `WX_MIO0_H`, `XGFX_H`, `XHW_H`, `ASP_HLE_H`, ... | header guards | not switches | |
 

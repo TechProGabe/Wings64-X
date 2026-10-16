@@ -9,10 +9,14 @@
  *                stick_deadzone, 0-60 %, default 20), the rest rescaled so
  *                full tilt reaches +-80, the N64's usable rim (Melee-X pad.c)
  *   A / B        A / X
- *   C buttons    right stick past half way, and Y (up) B (down) White (left)
- *                Black (right)
+ *   C buttons    D-pad (maintainer), and the right stick past half way
  *   Z / R        left / right trigger
- *   Start, D-pad Start, D-pad
+ *   Start        Start
+ *   D-pad        none: the game never reads it (hud.c only draws a demo's
+ *                presses)
+ *   Kill switch -DWX_PAD_CBUTTONS_DPAD=0: the first layout (C buttons on
+ *   the right stick and Y (up) B (down) White (left) Black (right), the
+ *   D-pad as the N64's D-pad).
  *   L            none (remappable later, M7)
  *   BACK         on the title: the Settings panel (patches/034)
  *
@@ -42,6 +46,9 @@
 #define CSTICK_ON 16384   /* half tilt */
 #define COMBO_TRIG 200    /* both triggers past this for the combos (Melee-X) */
 
+#ifndef WX_PAD_CBUTTONS_DPAD
+#define WX_PAD_CBUTTONS_DPAD 1
+#endif
 #ifndef WX_PAD_COMBO_WATCH
 #define WX_PAD_COMBO_WATCH 1
 #endif
@@ -241,6 +248,12 @@ void wx_pad_read(void* out) {
         if ((p.buttons & XHW_BTN_A) && !(s_confirm_hold & (1 << i))) b |= A_BUTTON;
         if (p.buttons & XHW_BTN_X) b |= B_BUTTON;
         if (p.buttons & XHW_BTN_START) b |= START_BUTTON;
+#if WX_PAD_CBUTTONS_DPAD
+        if ((p.buttons & XHW_BTN_UP) || p.ry > CSTICK_ON) b |= U_CBUTTONS;
+        if ((p.buttons & XHW_BTN_DOWN) || p.ry < -CSTICK_ON) b |= D_CBUTTONS;
+        if ((p.buttons & XHW_BTN_LEFT) || p.rx < -CSTICK_ON) b |= L_CBUTTONS;
+        if ((p.buttons & XHW_BTN_RIGHT) || p.rx > CSTICK_ON) b |= R_CBUTTONS;
+#else
         if (p.buttons & XHW_BTN_UP) b |= U_JPAD;
         if (p.buttons & XHW_BTN_DOWN) b |= D_JPAD;
         if (p.buttons & XHW_BTN_LEFT) b |= L_JPAD;
@@ -249,6 +262,7 @@ void wx_pad_read(void* out) {
         if ((p.buttons & XHW_BTN_B) || p.ry < -CSTICK_ON) b |= D_CBUTTONS;
         if ((p.buttons & XHW_BTN_WHITE) || p.rx < -CSTICK_ON) b |= L_CBUTTONS;
         if ((p.buttons & XHW_BTN_BLACK) || p.rx > CSTICK_ON) b |= R_CBUTTONS;
+#endif
         if (p.lt >= TRIG_ON) b |= Z_TRIG;
         if (p.rt >= TRIG_ON) b |= R_TRIG;
         if (XHW_TEST_BUILD && i == 0) {   /* test builds: what the game is handed, when it changes */

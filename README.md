@@ -79,6 +79,7 @@ Press **Back** on the title screen and the settings panel opens. It's also in th
 | Controls | Stick dead zone | 0 to 60 %, in steps of 5 (default 20 %). A live readout shows how far the stick is tilted, so you can pick a value for your controller |
 | Controls | Rumble | On or off: the controller rumbles when you crash |
 | System | Screenshots | Off by default. On: **Back** during play saves a picture to `E:\UDATA\57580001\` |
+| System | Complete save | Writes a save with every event at full points (all gold, everything unlocked) into **File 2**. If File 2 already holds a save, press A a second time to overwrite it. File 1 is never touched |
 
 Everything the panel changes lives in `E:\UDATA\57580001\settings.ini`, which you can also edit over FTP. It's written with the defaults on the first start. Delete it to get the defaults back.
 
@@ -89,14 +90,10 @@ Everything the panel changes lives in `E:\UDATA\57580001\settings.ini`, which yo
 | Left stick | control stick (radial dead zone, see Settings) |
 | A | A |
 | X | B |
-| B | C-down |
-| Y | C-up |
-| White | C-left |
-| Black | C-right |
-| Right stick, pushed past half | C-buttons |
+| D-pad | C-buttons (up, down, left, right): the camera views |
+| Right stick, pushed past half | C-buttons too |
 | Left trigger | Z |
 | Right trigger | R |
-| D-pad | D-pad |
 | Start | Start |
 | Back, on the title screen | opens the settings panel |
 | L + R + Back + Black | quit to the dashboard |

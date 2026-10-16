@@ -34,6 +34,9 @@
 #ifndef WINGS64_TITLE_COPYRIGHT
 #define WINGS64_TITLE_COPYRIGHT 0
 #endif
+#ifndef WX_SAVE_FILL
+#define WX_SAVE_FILL 1   /* Port settings > System > "Complete save": File 2 with every event at full points */
+#endif
 #ifndef WINGS64_TITLE_TEXT_DROP
 #define WINGS64_TITLE_TEXT_DROP 6   /* the title rows moved down in their box, centred (0: the game's margins) */
 #endif

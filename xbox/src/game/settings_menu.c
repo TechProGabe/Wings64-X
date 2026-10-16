@@ -30,7 +30,7 @@
  * Video: Resolution (restart: `*`), Widescreen (Off / On / Auto, at once),
  * Texture filter, FPS counter, Frame rate (60 / 30, at once; PLAN.md M5),
  * Apply and restart; Controls: Stick dead zone
- * with the raw stick's tilt next to it, Rumble; System: Screenshots. Each
+ * with the raw stick's tilt next to it, Rumble; System: Screenshots, Complete save (File 2 at full points). Each
  * sub-menu ends in Return (B does the same), which goes back up one level.
  * Buttons come with remapping. settings.ini is
  * written on leaving when something changed (settings.c).
@@ -50,7 +50,10 @@
 #include "app/menu_utils.h"
 #include "app/replay_screen.h"
 #include "app/snd.h"
+#include "app/save.h"
+#include "app/task.h"
 #include "app/text_data.h"
+#include <uv_system.h>
 #include <wings64_settings.h>
 #include <wings64_widescreen.h>
 
@@ -258,7 +261,7 @@ static void out_text(char* buf, int out) {
 
 /* ------------------------------------------------------------------ the panel */
 
-enum { ROW_VIDEO, ROW_FPS, ROW_SHOTS, ROW_DEADZONE, ROW_RESTART, ROW_RETURN, ROW_FILTER, ROW_RUMBLE, ROW_WIDE, ROW_RATE,
+enum { ROW_VIDEO, ROW_FPS, ROW_SHOTS, ROW_DEADZONE, ROW_RESTART, ROW_RETURN, ROW_FILTER, ROW_RUMBLE, ROW_WIDE, ROW_RATE, ROW_FILL,
        ROW_PAGE_VIDEO, ROW_PAGE_CONTROLS, ROW_PAGE_SYSTEM };
 
 /* The panel is a top level ("Port settings") and three sub-menus. A page is
@@ -273,7 +276,11 @@ static const s32 k_page_top[]      = { ROW_PAGE_VIDEO, ROW_PAGE_CONTROLS, ROW_PA
    System holds Screenshots (every build: maintainer, console run 8) */
 static const s32 k_page_video[]    = { ROW_VIDEO, ROW_WIDE, ROW_FILTER, ROW_FPS, ROW_RATE, ROW_RESTART, ROW_RETURN };
 static const s32 k_page_controls[] = { ROW_DEADZONE, ROW_RUMBLE, ROW_RETURN };
-static const s32 k_page_system[]   = { ROW_SHOTS, ROW_RETURN };
+static const s32 k_page_system[]   = { ROW_SHOTS,
+#if WX_SAVE_FILL
+                                       ROW_FILL,
+#endif
+                                       ROW_RETURN };
 
 static const struct { const s32* rows; s32 count; } k_pages[PAGE_COUNT] = {
     { k_page_top,      ARRAY_COUNT(k_page_top) },
@@ -302,6 +309,9 @@ static s16 sLegend[ROW_CAP];
 static s16 sHint[ROW_KINDS][ROW_CAP];
 static s16 sFilterNote[2][ROW_CAP];   /* the texture filter's hint follows its value */
 static s16 sRestartIdle[ROW_CAP];     /* Apply and restart with nothing to apply */
+static s16 sFillArmed[ROW_CAP];       /* Complete save: File 2 holds a save, A again overwrites it */
+static s16 sFillDone[ROW_CAP];        /* Complete save: written */
+static s32 sFillState;                /* 0, 1 armed, 2 written; back to 0 off the row */
 static s16* sReturnText;
 static s32 sStickHeld;
 static u8 sDirty;
@@ -338,6 +348,8 @@ static const char* row_label(s32 kind) {
         return "Stick dead zone";
     case ROW_RESTART:
         return "Apply and restart";
+    case ROW_FILL:
+        return "Complete save";   /* font 6 has no '%' */
     default:
         return "";
     }
@@ -378,6 +390,9 @@ static void panel_set_row(s32 idx) {
         break;
     case ROW_DEADZONE:
         snprintf(v, sizeof v, "%d", g_wx_settings.stick_deadzone);   /* percent: font 6 has no '%' */
+        break;
+    case ROW_FILL:
+        snprintf(v, sizeof v, "File 2");
         break;
     default:
         return;
@@ -453,7 +468,7 @@ static void panel_init(void) {
     glyphs(sRestartIdle, 0, ROW_CAP, MENU_FONT, "Nothing to apply yet");
     glyphs(sHint[ROW_PAGE_VIDEO], 0, ROW_CAP, MENU_FONT, "Picture and display");
     glyphs(sHint[ROW_PAGE_CONTROLS], 0, ROW_CAP, MENU_FONT, "Stick and rumble");
-    glyphs(sHint[ROW_PAGE_SYSTEM], 0, ROW_CAP, MENU_FONT, "Screenshots");
+    glyphs(sHint[ROW_PAGE_SYSTEM], 0, ROW_CAP, MENU_FONT, WX_SAVE_FILL ? "Screenshots, complete save" : "Screenshots");
     glyphs(sHint[ROW_VIDEO], 0, ROW_CAP, MENU_FONT, "HD needs an HD cable");
     glyphs(sHint[ROW_WIDE], 0, ROW_CAP, MENU_FONT, "Auto: 16:9 at 720p and 1080i");
     glyphs(sHint[ROW_FPS], 0, ROW_CAP, MENU_FONT, "Frame rate, top left");
@@ -462,6 +477,9 @@ static void panel_init(void) {
     glyphs(sHint[ROW_DEADZONE], 0, ROW_CAP, MENU_FONT, "Ignores small stick drift");
     glyphs(sHint[ROW_RUMBLE], 0, ROW_CAP, MENU_FONT, "Shakes when you crash");
     glyphs(sHint[ROW_SHOTS], 0, ROW_CAP, MENU_FONT, "BACK saves a picture");
+    glyphs(sHint[ROW_FILL], 0, ROW_CAP, MENU_FONT, "A: every event gold in File 2");
+    glyphs(sFillArmed, 0, ROW_CAP, MENU_FONT, "File 2 has a save: A again");
+    glyphs(sFillDone, 0, ROW_CAP, MENU_FONT, "File 2 is now complete");
     panel_open_page(PAGE_TOP, 0);
     sDirty = 0;
 }
@@ -537,6 +555,40 @@ static void panel_save(void) {
 }
 
 /* -1 = stay, 0 = leave. Mirrors optionsHandlerSound. */
+/* "Complete save" (maintainer request): File 2 (the EEPROM's second 256
+ * bytes) written as a save with every event at full points: 100 on each
+ * Hang Glider, Rocket Belt and Gyrocopter test, Sky Diving and Jumble
+ * Hopper level, 25 on each Cannonball target (a level's 100), Birdman as a
+ * new file has it (0x7F, never flown), an empty photo album. The layout is
+ * save.c's saveFileWrite (7-bit points from bit 16 in vehicle, class, test
+ * order, then 6 photos of 172 bits, a byte sum at 0xFF); the test counts
+ * are the game's (taskGetTestCount). The medals, the bonus levels and the
+ * all-perfect check are all worked out from those points. saveModuleInit
+ * then re-reads both files, as at boot, so the file menu shows it at once.
+ * DIVERGES: port option (no such thing on the N64). Kill switch
+ * -DWX_SAVE_FILL=0 drops the row. */
+static int save_fill_file2(void) {
+    u8 raw[0x100];
+    s32 bits = 0x10, v, c, t, i, val;
+    u32 sum = 0;
+    for (i = 0; i < (s32)sizeof raw; i++) raw[i] = 0;
+    raw[0] = 'P';
+    raw[1] = 'W';
+    for (v = 0; v < VEHICLE_COUNT; v++) {
+        for (c = 0; c < (IS_BONUS_VEHICLE(v) ? 3 : 4); c++) {
+            for (t = 0; t < taskGetTestCount(c, v); t++) {
+                val = v == VEHICLE_BIRDMAN ? 0x7F : v == VEHICLE_CANNONBALL ? 25 : 100;
+                for (i = 0; i < 7; i++, bits++) raw[bits / 8] |= ((val >> i) & 1) << (bits % 8);
+            }
+        }
+    }
+    for (i = 0; i < 0xFF; i++) sum += raw[i];
+    raw[0xFF] = (u8)sum;
+    if (uvFileWrite(raw, sizeof raw, sizeof raw) != (s32)sizeof raw) return 0;
+    saveModuleInit();
+    return 1;
+}
+
 static s32 panel_update(void) {
     s32 sel, cur, dir, held;
     f32 stickX;
@@ -544,6 +596,7 @@ static s32 panel_update(void) {
 
     sel = menuUtilCheckInputs();
     cur = menuUtilGetCurItem();
+    if (cur < 0 || cur >= sPanelCount || sPanelRowKind[cur] != ROW_FILL) sFillState = 0;
     if (sel == -1) {   /* B: back to the top level, or (there) saved, as Return */
         if (sPage != PAGE_TOP) {
             panel_open_page(PAGE_TOP, sPage - 1);
@@ -584,6 +637,22 @@ static s32 panel_update(void) {
             break;
         case ROW_DEADZONE:
             break;   /* left/right only */
+        case ROW_FILL:
+            if (sFillState != 1 && saveFileHasData(1)) {   /* File 2 is in use: ask again (the hint says so) */
+                sFillState = 1;
+                sndPlaySfx(SFX_OPTION_FLIP);
+                break;
+            }
+            if (save_fill_file2()) {
+                sFillState = 2;
+                sndPlaySfx(SFX_UI_CONFIRM);
+                xhw_log("[SETTINGS] complete save written to File 2");
+            } else {
+                sFillState = 0;
+                sndPlaySfx(SFX_OPTION_FLIP);
+                xhw_log("[SETTINGS] complete save: the EEPROM write failed");
+            }
+            break;
         default:
             panel_change(sel, 1);
             break;
@@ -599,16 +668,17 @@ static s32 panel_update(void) {
         dir = stickX > 0.0f ? 1 : -1;
         sStickHeld = TRUE;
     }
-    if (demoButtonPress(D_80362690->unk9C, R_JPAD)) dir = 1;
-    if (demoButtonPress(D_80362690->unk9C, L_JPAD)) dir = -1;
+    /* the D-pad: the N64's D-pad, or its C buttons (pad.c WX_PAD_CBUTTONS_DPAD) */
+    if (demoButtonPress(D_80362690->unk9C, R_JPAD | R_CBUTTONS)) dir = 1;
+    if (demoButtonPress(D_80362690->unk9C, L_JPAD | L_CBUTTONS)) dir = -1;
     if (dir != 0) {
         panel_change(cur, dir);
         sHeldDir = dir;
         sHeldSince = sHeldLast = now;
     } else if (sPanelRowKind[cur] == ROW_DEADZONE && sHeldDir != 0) {
         /* held: repeat by retrace count, so the rate does not follow the frame rate */
-        held = sHeldDir > 0 ? (stickX > 0.75f || demoButtonCheck(D_80362690->unk9C, R_JPAD))
-                            : (stickX < -0.75f || demoButtonCheck(D_80362690->unk9C, L_JPAD));
+        held = sHeldDir > 0 ? (stickX > 0.75f || demoButtonCheck(D_80362690->unk9C, R_JPAD | R_CBUTTONS))
+                            : (stickX < -0.75f || demoButtonCheck(D_80362690->unk9C, L_JPAD | L_CBUTTONS));
         if (!held) {
             sHeldDir = 0;
         } else if (now - sHeldSince >= REPEAT_FIRST && now - sHeldLast >= REPEAT_EVERY) {
@@ -635,6 +705,9 @@ static void panel_draw_legend(void) {
     } else if (kind == ROW_RESTART) {
         line = restart_pending() ? sHint[ROW_RESTART] : sRestartIdle;
         warn = restart_pending();
+    } else if (kind == ROW_FILL && sFillState) {
+        line = sFillState == 1 ? sFillArmed : sFillDone;
+        warn = sFillState == 1;
     } else if (kind >= 0 && kind < ROW_KINDS && sHint[kind][0]) {
         line = sHint[kind];
     } else if (sPage == PAGE_VIDEO) {

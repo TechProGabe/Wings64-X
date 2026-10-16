@@ -16,7 +16,7 @@
 
 Pilotwings 64, running natively on an original Xbox. No emulator: the game's own code, rebuilt for the Pentium III.
 
-After getting it flying on the Dreamcast I wanted to see what the Xbox could do with it. The answer is a steady 60 fps, 720p, widescreen, and rumble when you crash. This is release candidate 1, so it's close, but tell me when something breaks.
+After getting it flying on the Dreamcast I wanted to see what the Xbox could do with it. The answer is a steady 60 fps, 720p, widescreen, and rumble when you crash. :)
 
 ## What it is
 
@@ -137,14 +137,6 @@ tools/xbox/docker/build.sh     # Docker (Linux, macOS, Windows)
 ```
 
 Both write `build-xbox/xbe/default.xbe` and `default.tbn`. [docs/](docs/README.md) has the rest, starting with [docs/toolchain.md](docs/toolchain.md).
-
-## A few things that make this fun
-
-- The decomp is never edited. It's fetched at a pinned commit and patched from `patches/`, one patch per reason, and every change is guarded so the original line sits right next to it.
-- The shadows under the vehicles are the N64's z-buffer trick done with the NV2A's stencil buffer. On the console they first drew as solid columns because the stencil write bit is off by default. xemu doesn't care, real hardware does.
-- The title screen used to hitch hard when the helicopters flew in. It turned out to be the log, flushing every line to the hard drive during the first ten seconds.
-- 1080i faulted on its very first frame because pbkit rounds the tile pitch but not the surface pitch. Only 1920 wide was affected.
-- Emulator numbers and console numbers never get mixed. A lot of what looked fine in xemu was wrong on the real thing, and the other way round.
 
 ## Thanks
 

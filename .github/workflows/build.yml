@@ -65,6 +65,7 @@ jobs:
           python3 tools/xbox/test_cc.py
           python3 tools/xbox/test_texconv.py
           python3 tools/xbox/test_asp_hle.py
+          python3 tools/xbox/test_rate.py
 
       - uses: actions/upload-artifact@v4
         with:

@@ -9,9 +9,6 @@
   <img src="https://img.shields.io/badge/runs%20on-real%20hardware-2ea44f" alt="runs on real hardware">
   <img src="https://img.shields.io/badge/frame%20rate-60%20fps-ff8a1f" alt="60 fps">
   <img src="https://img.shields.io/badge/video-480i%20%7C%20480p%20%7C%20720p-1f6fe0" alt="video: 480i, 480p, 720p">
-  <img src="https://img.shields.io/badge/toolchain-nxdk%20%2B%20LLVM%2021-8a2be2" alt="toolchain: nxdk and LLVM 21">
-  <img src="https://img.shields.io/badge/language-C-555555" alt="language: C">
-  <img src="https://img.shields.io/badge/ROM-not%20included-lightgrey" alt="ROM not included">
 </p>
 
 Pilotwings 64, running natively on an original Xbox. No emulator: the game's own code, rebuilt for the Pentium III.

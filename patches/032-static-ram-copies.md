@@ -8,8 +8,12 @@ a ROM offset (ROM addresses are below 8 MB). On the Xbox the XBE's static data s
 - `app/save.c` `saveFileWrite`: `sSaveFilesMirror[i].raw <- saveFile->raw` (a pointer into `sSaveFiles`).
 - `app/task.c` `taskBirdmanPad`: `D_8035078C->dataTPAD <- sTaskTakeoffPads[mapIdx]` (the Birdman take-off
   pad came from ROM bytes).
+- `app/task.c` `taskInit`: `sTaskTakeoffPads[classIdx] <- obj->dataTPAD`, the boot-time fill of that table:
+  the task's parsed objects are host memory below 0x80000000 too, so the table held ROM bytes and a
+  Birdman star started the bird at a NaN position, the game calling it a crash at once (console, rc2;
+  xemu: the pad words garbage after the switch, the position NaN).
 
-**Fix:** under `WINGS64_XBOX`, these three are plain RAM copies (`__builtin_memcpy`). The other
+**Fix:** under `WINGS64_XBOX`, these four are plain RAM copies (`__builtin_memcpy`). The other
 `_uvMediaCopy` sources are ROM addresses or the arena (bit 31 set); stack sources are on kernel stacks
 (bit 31 set, M3's `osCreateThread`).
 

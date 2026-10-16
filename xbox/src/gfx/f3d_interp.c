@@ -392,7 +392,9 @@ static void log_side_leak(void) {
     static unsigned s_n;
     float x0 = 1e9f, x1 = -1e9f, bl = s_cx, br = s_cx + s_cw;
     uint32_t i;
-    if (s_extend || s_n >= 16 || s_cw >= (float)s_out.fb_w - 1.0f) return;
+    if (s_extend || (s_overlay && s_hp) /* a fill stretched to 16:9 on purpose */ || s_n >= 16 ||
+        s_cw >= (float)s_out.fb_w - 1.0f)
+        return;
     if (s_st.scissor[0] >= (int32_t)bl && s_st.scissor[2] <= (int32_t)br) return;   /* clipped to the box */
     for (i = 0; i < s_nb * 3; i++) {
         if (s_batch[i].x < x0) x0 = s_batch[i].x;

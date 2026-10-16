@@ -228,6 +228,7 @@ returns NULL):
 |---|---|---|
 | `MX_VIDEO=480i\|480\|720\|1080` | `xhw_video.c`, over `settings.ini` | forces the video mode for the boot (`[VIDEO] MX_VIDEO=`) |
 | `MX_ROM=<file>` | `xhw_rom.c` | the ROM file to load from D:\ by name (test builds), instead of the first one found |
+| `MX_BIRDMAN_AT=<reads>` | `game/pad.c` | that many controller reads into a test, the switch a Birdman star makes (`func_802EE14C`), and the bird's position logged for the next frames (`[PAD] Birdman at`) |
 | `MX_NEXT_XBE=F:\...\default.xbe` | `xhw_autopad.c`, `xhw_fbdump.c` | the XBE a `NEXT` event (or a hang) launches; shots get the folder's name |
 | `MX_TEST_HANG=<frame>` | `xhw_autopad.c` | the game thread stops at that frame (checks the watchdog's report and recovery) |
 | `MX_FILL_E=1` | `xhw_autopad.c` | fills E: to the last cluster with `E:\mx_fillN.bin` (disk-full tests) |

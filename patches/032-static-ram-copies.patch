@@ -28,7 +28,22 @@
          }
 --- a/src/app/task.c
 +++ b/src/app/task.c
-@@ -749,7 +749,12 @@
+@@ -140,7 +140,14 @@
+         taskInfo->taskName = obj->dataNAME;
+         taskInfo->taskId = obj->dataJPTX;
+         if ((vehIdx == VEHICLE_BIRDMAN) && (testIdx == 0)) {
++#ifdef WINGS64_XBOX
++            // PORT: obj->dataTPAD is a host pointer below 0x80000000 (the task's parsed
++            // objects): _uvMediaCopy would read it as a ROM offset, and the Birdman
++            // started from ROM bytes (a NaN position: "crashed" right after a star)
++            __builtin_memcpy(&sTaskTakeoffPads[classIdx], obj->dataTPAD, sizeof(TaskTPAD));
++#else
+             _uvMediaCopy(&sTaskTakeoffPads[classIdx], obj->dataTPAD, sizeof(TaskTPAD));
++#endif
+         }
+     }
+ }
+@@ -749,7 +756,12 @@
          _uvDebugPrintf("task_birdpad : level out of valid range [%d] - set to 0\n", mapIdx);
          mapIdx = 0;
      }

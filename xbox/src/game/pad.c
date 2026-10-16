@@ -219,6 +219,34 @@ static void stick(const xhw_pad* p, s8* sx, s8* sy, int port) {
     *sy = (s8)(y > 80.0f ? 80 : y < -80.0f ? -80 : (int)(y + (y >= 0.0f ? 0.5f : -0.5f)));
 }
 
+#if defined(XHW_AUTOPAD) && XHW_AUTOPAD
+/* test builds: "env MX_BIRDMAN_AT=<reads>": that many controller reads into
+ * a test, the switch a Birdman star makes (bonus.c: func_802EE14C with
+ * VEHICLE_BIRDMAN), from the game thread as the star does, and the bird's
+ * position for the next frames (the rc2 star crash: patches/032) */
+#include <stdlib.h>
+void func_802EE14C(u16 veh);
+int wx_game_state(void);
+extern void* D_80367704;   /* game.c: the BirdmanData */
+static void birdman_at(void) {
+    static int s_at = -1, s_n;
+    if (s_at == -1) {
+        const char* e = getenv("MX_BIRDMAN_AT");
+        s_at = e ? atoi(e) : 0;
+    }
+    if (s_at <= 0 || wx_game_state() != 5 /* test update */) return;
+    if (++s_n == s_at) {
+        xhw_logf("[PAD] MX_BIRDMAN_AT: switching to the Birdman at read %d", s_n);
+        func_802EE14C(6);
+    }
+    if (s_n >= s_at && s_n < s_at + 4 && D_80367704) {
+        const f32* m = (const f32*)D_80367704 + 0x10 / 4;   /* unk10: the bird's matrix */
+        xhw_logf("[PAD] Birdman at %d %d %d mm", (int)(m[12] * 1000.0f), (int)(m[13] * 1000.0f),
+                 (int)(m[14] * 1000.0f));
+    }
+}
+#endif
+
 void wx_pad_read(void* out) {
     OSContPad* pads = (OSContPad*)out;
     int i, back, held = 0;
@@ -279,6 +307,9 @@ void wx_pad_read(void* out) {
     s_combo_held = held;
     s_read_at = s_retraces;
     s_started = 1;
+#if defined(XHW_AUTOPAD) && XHW_AUTOPAD
+    birdman_at();
+#endif
     __sync_lock_release(&s_busy);
     act();
 }

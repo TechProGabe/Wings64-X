@@ -63,7 +63,7 @@ given; "undefined" means the code is compiled only when `-D` names it.
 | `XHW_CODE_REPAIR_TEST` | undefined | test builds only: applies the rewrite ourselves at one site, to see the repair work | `xhw_code_repair.c` |
 | `XHW_RAM_LOCK64` | 1 | hold RAM above 64 MB on a 128 MB console (PLAN.md D2); 0 for diagnosis only | `xhw_ramlock.c` |
 | `XHW_CLOCK_TSC` | 1 | read the TSC once at boot against the ACPI timer for `[CLOCK] cpu N MHz`; 0 skips | `xhw_clock.c` |
-| `XHW_VIDEO_1080I` | 1 | allow 1080i (Auto picks it when the dashboard allows); 0 removes the mode | `xhw_video.c` |
+| `XHW_VIDEO_1080I` | 0 | 1: offer 1080i (Auto picks it when the dashboard allows). Off since console run 15 (frame rate cost); 720p is the top mode | `xbox/include/xhw.h` |
 | `XHW_VBLANK_PACE` | 1 | frame pacing from pbkit's vblank when the output is 60 Hz; 0 always the ACPI pacer at 60.000 Hz | `xhw_video.c` |
 | `XHW_SPLASH_MS` | 2000 | splash hold time | `xhw_splash.c` |
 | `XHW_NO_SPLASH` | undefined | defined: no splash at all | `xhw_splash.c` |
@@ -158,6 +158,7 @@ is not defined); it is not a switch to set.
 | `XHW_FPS_DEFAULT` | `XHW_TEST_BUILD` | the FPS counter's default (`[video] fps`) | `xbox/src/game/settings.c` |
 | `XHW_LOG_BOOT_UNTIL_FRAME` | 1 | boot.log flushes every line only until the first presented frame (0: for the first 600 retraces, which reached into the title and hitched it) | `xbox/src/hw/xhw_sys.c` |
 | `XGFX_TILE_MISMATCH_OFF` | 1 | a tile region whose pitch differs from its surface's (1080i: pbkit rounds the tile pitch, not the surface's) is switched off with its Z compression (0: left as pbkit set it; the console faulted on the first clear) | `xbox/src/hw/nv2a.c` |
+| `XGFX_SIDE_CLEAR` | 1 | the pillarbox strips outside the 4:3 box cleared to black at the start of every frame (0: not; at 720p leftovers showed as a line in the right strip) | `xbox/src/gfx/f3d_interp.c` |
 | `WX_SAVE_FILL` | 1 | Port settings > System > "Complete save": writes File 2 with every event at full points (0: the row is gone) | `xbox/include/game/wings64_settings.h`, `xbox/src/game/settings_menu.c` |
 | `WINGS64_TITLE_TEXT_DROP` | 6 | the title menu rows moved down inside their box, centred (0: the game's margins) | `xbox/include/game/wings64_settings.h` |
 | `WX_HAVE_GAME` | derived (CMake: decomp present) | links the game objects | `xbox/CMakeLists.txt` |

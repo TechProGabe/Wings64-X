@@ -10,7 +10,9 @@
  * falls to the next one down; xhw_video_fallback_480 is the renderer's way
  * back when pbkit can't start in the chosen one. 16-bit colour at 720p and
  * 1080i: three 32-bit framebuffers plus depth don't fit next to the game in
- * 64 MB (OpenCrossing-Xbox's measurement). Kill switch: -DXHW_VIDEO_1080I=0.
+ * 64 MB (OpenCrossing-Xbox's measurement). 1080i is off by default
+ * (XHW_VIDEO_1080I, xhw.h): it ran on the console (run 15) but cost too
+ * much frame rate for its picture; 720p is the top mode.
  *
  * Also the retrace and present counters (the watchdog and the log read
  * them) and the screenshot request the renderer takes at present. */
@@ -24,9 +26,6 @@
 #include "xhw.h"
 #include "xhw_internal.h"
 
-#ifndef XHW_VIDEO_1080I
-#define XHW_VIDEO_1080I 1
-#endif
 
 /* nxdk's video.c: the region in the encoder settings, and its 640x480i
  * mode for the HDTV pack (NTSC-M and NTSC-J use the same one) */

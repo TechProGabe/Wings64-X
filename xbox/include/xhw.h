@@ -146,6 +146,14 @@ int xhw_video_widescreen_set(void);
 /* Before xhw_video_boot (settings.ini): XHW_OUT_* and 0 to force 480i where
  * the dashboard allows 480p. */
 enum { XHW_OUT_AUTO = 0, XHW_OUT_480I, XHW_OUT_480P, XHW_OUT_720P, XHW_OUT_1080I };
+/* 1080i (maintainer, console run 15): it works, but the frame rate it costs
+ * isn't worth it, so 720p is the top mode: Auto stops there, the settings
+ * panel doesn't offer 1080i, and "output = 1080i" in settings.ini runs
+ * 720p. -DXHW_VIDEO_1080I=1 brings it back. */
+#ifndef XHW_VIDEO_1080I
+#define XHW_VIDEO_1080I 0
+#endif
+#define XHW_OUT_COUNT (XHW_VIDEO_1080I ? 5 : 4)
 void xhw_video_set_pref(int output, int progressive);
 /* Sets the mode once, before pbkit starts. Ends the splash. */
 void xhw_video_boot(void);

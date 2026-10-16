@@ -1430,6 +1430,25 @@ static void hold_frame(void) {
     hold_quad(s_hold_tex, s_hold_u, s_hold_v, !s_hold_linear && s_hold_u * (float)s_out.fb_w > 1024.0f);
 }
 
+/* The pillarbox strips outside the 4:3 box, cleared to black at the start
+ * of every frame (the box of the frame before: map_setup comes later and
+ * rarely changes). With hor+ a world view draws into them; a menu or the
+ * title draws only inside the box and does not always clear the whole
+ * screen, so a framebuffer of the three could show leftovers there: at
+ * 720p a line now and then in the black at the right (maintainer, console
+ * run 15). A held or persisted frame (hold_frame) and this frame's
+ * extended draws come after and cover the strips as before.
+ * DIVERGES: none (the N64 has no pillarbox). Kill switch -DXGFX_SIDE_CLEAR=0. */
+#ifndef XGFX_SIDE_CLEAR
+#define XGFX_SIDE_CLEAR 1
+#endif
+static void side_clear(void) {
+    int32_t x0 = (int32_t)s_cx, x1 = (int32_t)(s_cx + s_cw), h = (int32_t)s_out.fb_h;
+    if (!XGFX_SIDE_CLEAR || s_out.fb_w <= 0 || h <= 0) return;
+    if (x0 > 0) xgfx_clear(0, 0, x0, h, 0xFF000000u, 1, 0, 1.0f);
+    if (x1 < s_out.fb_w) xgfx_clear(x1, 0, s_out.fb_w, h, 0xFF000000u, 1, 0, 1.0f);
+}
+
 void f3d_run(const void* dl) {
     uint64_t t0 = xhw_time_us();
     int i;
@@ -1439,6 +1458,7 @@ void f3d_run(const void* dl) {
         for (i = 0; i < 16; i++) R.mv[0][i >> 2][i & 3] = R.proj[i >> 2][i & 3] = (i % 5) == 0 ? 1.0f : 0.0f;
     }
     xgfx_frame_begin();
+    side_clear();
     hold_frame();
     s_title = wx_game_state() == 0;
     map_setup();

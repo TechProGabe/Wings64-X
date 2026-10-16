@@ -96,11 +96,11 @@ preference from `settings.ini` (`output`, `progressive`) chooses:
 
 | mode | set with | condition |
 |---|---|---|
-| 1080i | `XVideoSetMode(1920, 1080, 16)` | allowed, ≥ 40 MB free, `XHW_VIDEO_1080I` |
+| 1080i | `XVideoSetMode(1920, 1080, 16)` | off by default (`XHW_VIDEO_1080I` 0 in `xhw.h`, maintainer, console run 15: works, frame rate cost too high); with it: allowed, ≥ 40 MB free |
 | 720p | `XVideoSetMode(1280, 720, 16)` | allowed, ≥ 32 MB free |
 | 480p / 480i | `XVideoSetMode(640, 480, 32)`; 480i on an HDTV pack with `XVideoInit(0x0801010d, ...)` | always available |
 
-Auto (`output = auto`) takes 1080i, then 720p, then 480p, as the dashboard
+Auto (`output = auto`) takes 720p (1080i only when built with it), then 480p, as the dashboard
 allows. A mode the dashboard does not allow, or that is short of memory, falls to
 480. The 16-bit HD modes are the render targets' format (`XGFX_Z24_16BPP`, section
 4.3). The chosen mode is logged as `[VIDEO] WxH N-bit progressive|interlaced 16:9|4:3 dashboard`.

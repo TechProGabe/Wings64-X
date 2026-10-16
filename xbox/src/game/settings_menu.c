@@ -498,7 +498,7 @@ static void panel_change(s32 idx, s32 dir) {
     s32 kind = sPanelRowKind[idx];
     switch (kind) {
     case ROW_VIDEO:
-        g_wx_settings.output = (g_wx_settings.output + dir + 5) % 5;
+        g_wx_settings.output = (g_wx_settings.output + dir + XHW_OUT_COUNT) % XHW_OUT_COUNT;
         g_wx_settings.progressive = g_wx_settings.output != XHW_OUT_480I;   /* 480i is the one interlaced pick */
         break;
     case ROW_WIDE:   /* Off, On, Auto; at once (the panel's own backdrop shows it) */

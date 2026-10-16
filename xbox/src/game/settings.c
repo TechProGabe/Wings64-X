@@ -97,7 +97,10 @@ static void parse(WxSettings* s, char* text) {
             *eq = '\0';
             k = trim(line);
             v = trim(eq + 1);
-            if (!strcmp(k, "output")) s->output = pick(v, k_out, 5, XHW_OUT_AUTO);
+            if (!strcmp(k, "output")) {
+                s->output = pick(v, k_out, 5, XHW_OUT_AUTO);
+                if (s->output >= XHW_OUT_COUNT) s->output = XHW_OUT_720P;   /* 1080i off (xhw.h XHW_VIDEO_1080I) */
+            }
             else if (!strcmp(k, "progressive")) s->progressive = atoi(v) != 0;
             else if (!strcmp(k, "widescreen")) s->widescreen = pick(v, k_ws, 3, 2);
             else if (!strcmp(k, "video_confirmed")) snprintf(s->video_confirmed, sizeof s->video_confirmed, "%s", v);
